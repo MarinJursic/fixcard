@@ -7,10 +7,19 @@ use fixcard_core::{CardDocument, Risk};
 use jiff::civil::Date;
 use regex::Regex;
 use semver::VersionReq;
+use serde::Deserialize;
 
 static SECRET_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
     [
-        ("github-token", r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+        (
+            "github-token",
+            r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{40,})\b",
+        ),
+        ("gitlab-token", r"\bglpat-[A-Za-z0-9_-]{20,}\b"),
+        ("npm-token", r"\bnpm_[A-Za-z0-9]{36}\b"),
+        ("slack-token", r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
+        ("google-api-key", r"\bAIza[0-9A-Za-z_-]{35}\b"),
+        ("stripe-secret-key", r"\bsk_live_[A-Za-z0-9]{20,}\b"),
         ("aws-access-key", r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
         (
             "private-key",
@@ -24,6 +33,7 @@ static SECRET_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| 
             "authorization-header",
             r"(?i)authorization\s*:\s*(?:bearer|basic)\s+\S+",
         ),
+        ("cookie-header", r"(?i)(?:set-)?cookie\s*:\s*[^\r\n]+"),
         (
             "url-credentials",
             r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/@:]+:[^\s/@]+@",
@@ -31,6 +41,10 @@ static SECRET_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| 
         (
             "database-url",
             r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^\s]+",
+        ),
+        (
+            "url-query-credential",
+            r"(?i)\bhttps?://[^\s?]+\?[^\s]*(?:access[_-]?token|api[_-]?key|secret|signature|sig)=[^\s&#]+",
         ),
         (
             "secret-assignment",
@@ -48,34 +62,48 @@ static SECRET_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| 
     .collect()
 });
 
-static RISK_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
+static RISK_PATTERNS: LazyLock<Vec<(&'static str, &'static str, Regex)>> = LazyLock::new(|| {
     [
-        ("privileged command", r"(?m)(?:^|[;&|]\s*)sudo\s+"),
         (
+            "privileged-command",
+            "privileged command",
+            r"(?m)(?:^|[;&|]\s*)sudo\s+",
+        ),
+        (
+            "recursive-deletion",
             "recursive deletion",
             r"(?m)\brm\s+[^\n]*(?:-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r)",
         ),
-        ("force push", r"(?m)\bgit\s+push\b[^\n]*(?:--force|-f\b)"),
         (
+            "force-push",
+            "force push",
+            r"(?m)\bgit\s+push\b[^\n]*(?:--force|-f\b)",
+        ),
+        (
+            "remote-pipe-to-shell",
             "remote pipe to shell",
             r"(?im)\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh)\b",
         ),
         (
+            "database-migration",
             "database migration",
             r"(?i)\b(?:migrate|migration)\s+(?:up|run|deploy|apply)\b",
         ),
         (
+            "production-target",
             "production target",
             r"(?i)(?:--(?:env|environment|target)[ =]production|\bprod(?:uction)?\b)",
         ),
         (
+            "credential-change",
             "credential change",
             r"(?i)\b(?:passwd|rotate[-_ ]?key|delete[-_ ]?credential)\b",
         ),
     ]
     .into_iter()
-    .map(|(name, pattern)| {
+    .map(|(class, name, pattern)| {
         (
+            class,
             name,
             Regex::new(pattern)
                 .unwrap_or_else(|error| unreachable!("static risk regex is valid: {error}")),
@@ -87,6 +115,10 @@ static RISK_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
 static LOCAL_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:/users|/home)/[^/\s:]+|[a-z]:\\users\\[^\\\s:]+")
         .unwrap_or_else(|error| unreachable!("static path regex is valid: {error}"))
+});
+static INTERNAL_HOSTNAME: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:[a-z0-9-]+\.)+(?:corp|internal|intranet|lan|local)\b")
+        .unwrap_or_else(|error| unreachable!("static hostname regex is valid: {error}"))
 });
 static CERTAINTY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:always fixes|guaranteed fix|will definitely fix|safe to run)\b")
@@ -142,16 +174,71 @@ pub struct CardSetDiagnostic {
     pub diagnostic: Diagnostic,
 }
 
+/// Optional repository policy applied by lint and shared-card creation.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct LintPolicy {
+    /// Command classes that are forbidden even on declared high-risk cards.
+    pub deny_command_classes: BTreeSet<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct PolicyDocument {
+    lint: LintPolicy,
+}
+
+/// Parse and validate a repository `.fixcard.toml` policy.
+///
+/// # Errors
+///
+/// Returns a bounded human-readable error for malformed TOML, unknown fields,
+/// or command classes that this binary does not recognize.
+pub fn parse_policy(source: &str) -> Result<LintPolicy, String> {
+    let document = toml::from_str::<PolicyDocument>(source)
+        .map_err(|error| format!("invalid Fixcard policy: {error}"))?;
+    let unknown = document
+        .lint
+        .deny_command_classes
+        .iter()
+        .filter(|class| {
+            !RISK_PATTERNS
+                .iter()
+                .any(|(known, _, _)| known == &class.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "unknown denied command class{}: {}",
+            if unknown.len() == 1 { "" } else { "es" },
+            unknown.join(", ")
+        ));
+    }
+    Ok(document.lint)
+}
+
 /// Inspect a valid parsed document and its original source.
 #[must_use]
 pub fn lint_card(document: &CardDocument, source: &str, today: Option<Date>) -> Vec<Diagnostic> {
+    lint_card_with_policy(document, source, today, &LintPolicy::default())
+}
+
+/// Inspect a card under an optional repository command-class policy.
+#[must_use]
+pub fn lint_card_with_policy(
+    document: &CardDocument,
+    source: &str,
+    today: Option<Date>,
+    policy: &LintPolicy,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     lint_anchors(document, &mut diagnostics);
     lint_versions(document, &mut diagnostics);
     lint_validation(document, &mut diagnostics);
     lint_lifecycle(document, today, &mut diagnostics);
     lint_secrets(source, &mut diagnostics);
-    lint_risk(document, source, &mut diagnostics);
+    lint_risk(document, source, policy, &mut diagnostics);
     lint_local_data(source, &mut diagnostics);
     lint_language(source, &mut diagnostics);
     diagnostics.sort_by_key(|item| (item.severity, item.line.unwrap_or(usize::MAX), item.code));
@@ -555,22 +642,32 @@ fn sensitive_matches(source: &str) -> Vec<SensitiveMatch> {
     matches
 }
 
-fn lint_risk(document: &CardDocument, source: &str, diagnostics: &mut Vec<Diagnostic>) {
-    for (kind, pattern) in RISK_PATTERNS.iter() {
+fn lint_risk(
+    document: &CardDocument,
+    source: &str,
+    policy: &LintPolicy,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for (class, kind, pattern) in RISK_PATTERNS.iter() {
         if let Some(found) = pattern.find(source) {
             let declared_high = document.card.risk == Risk::High;
+            let denied = policy.deny_command_classes.contains(*class);
             diagnostics.push(Diagnostic {
-                code: if declared_high {
+                code: if denied {
+                    "denied-command-class"
+                } else if declared_high {
                     "high-risk-command"
                 } else {
                     "understated-risk"
                 },
-                severity: if declared_high {
-                    Severity::Warning
-                } else {
+                severity: if denied || !declared_high {
                     Severity::Error
+                } else {
+                    Severity::Warning
                 },
-                message: if declared_high {
+                message: if denied {
+                    format!("repository policy forbids command class `{class}` ({kind})")
+                } else if declared_high {
                     format!("declared high-risk card contains {kind}")
                 } else {
                     format!("card contains {kind} but risk is not `high`")
@@ -587,6 +684,14 @@ fn lint_local_data(source: &str, diagnostics: &mut Vec<Diagnostic>) {
             code: "local-home-path",
             severity: Severity::Warning,
             message: "machine-local home path should be generalized before sharing".to_owned(),
+            line: Some(line_number(source, found.start())),
+        });
+    }
+    for found in INTERNAL_HOSTNAME.find_iter(source) {
+        diagnostics.push(Diagnostic {
+            code: "internal-hostname",
+            severity: Severity::Warning,
+            message: "internal-looking hostname should be generalized before sharing".to_owned(),
             line: Some(line_number(source, found.start())),
         });
     }
@@ -713,6 +818,47 @@ mod tests {
                 .any(|item| item.code == "high-risk-command")
         );
         assert!(!blocks_team_save(&diagnostics));
+    }
+
+    #[test]
+    fn repository_policy_can_forbid_a_high_risk_class() {
+        let policy = parse_policy("[lint]\ndeny-command-classes = [\"privileged-command\"]\n")
+            .unwrap_or_else(|error| panic!("policy: {error}"));
+        let source = source("sudo rm /var/example", "high");
+        let card = parse_card(&source).unwrap_or_else(|error| panic!("fixture: {error}"));
+        let diagnostics = lint_card_with_policy(&card, &source, None, &policy);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code == "denied-command-class")
+        );
+        assert!(blocks_team_save(&diagnostics));
+        assert!(parse_policy("[lint]\ndeny-command-classes = [\"unknown\"]").is_err());
+    }
+
+    #[test]
+    fn recognizes_additional_credential_and_internal_host_patterns() {
+        let value = "glpat-1234567890abcdefghij";
+        let source = source(
+            &format!(
+                "Cookie: session=example-value-long\ncurl https://build.corp/path?sig=example-signature\nTOKEN={value}"
+            ),
+            "low",
+        );
+        let card = parse_card(&source).unwrap_or_else(|error| panic!("fixture: {error}"));
+        let diagnostics = lint_card(&card, &source, None);
+        assert!(
+            diagnostics
+                .iter()
+                .filter(|item| item.code == "possible-secret")
+                .count()
+                >= 3
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code == "internal-hostname")
+        );
     }
 
     #[test]

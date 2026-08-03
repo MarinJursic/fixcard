@@ -308,6 +308,25 @@ fn blocks_understated_dangerous_commands_but_allows_declared_high_risk() {
 }
 
 #[test]
+fn repository_policy_blocks_a_denied_command_class() {
+    let repository = empty_repository();
+    fs::write(
+        repository.path().join(".fixcard.toml"),
+        "[lint]\ndeny-command-classes = [\"privileged-command\"]\n",
+    )
+    .expect("write policy");
+    let mut args = creation_args().to_vec();
+    args.extend(["--command", "sudo true", "--risk", "high"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("denied-command-class"))
+        .stderr(predicate::str::contains("blocking errors"));
+}
+
+#[test]
 fn private_cards_created_in_a_linked_worktree_use_the_common_git_directory() {
     let repository = empty_repository();
     fs::write(repository.path().join("README.md"), "worktree fixture").expect("write fixture");

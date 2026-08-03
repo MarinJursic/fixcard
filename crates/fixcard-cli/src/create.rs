@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use dialoguer::{Confirm, Input};
 use fixcard_core::{Applies, Card, MatchSpec, Risk, Verification, parse_card, sanitize_terminal};
 use fixcard_git::Repository;
-use fixcard_lint::{Severity, blocks_team_save, lint_card, redact_secrets};
+use fixcard_lint::{LintPolicy, Severity, blocks_team_save, lint_card_with_policy, redact_secrets};
 use jiff::Zoned;
 
 use crate::NewArgs;
@@ -19,7 +19,11 @@ use crate::NewArgs;
     clippy::too_many_lines,
     reason = "creation is a linear reviewed transaction whose ordering is safety-relevant"
 )]
-pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode> {
+pub(super) fn create(
+    repository: &Repository,
+    args: &NewArgs,
+    policy: &LintPolicy,
+) -> Result<ExitCode> {
     let interactive = std::io::stdin().is_terminal();
     let title = required(args.title.clone(), "Short title", interactive)?;
     let id = args.id.clone().unwrap_or_else(|| slugify(&title));
@@ -115,7 +119,7 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         &commands,
     )?;
     let document = parse_card(&source).context("generated card failed format validation")?;
-    let diagnostics = lint_card(&document, &source, Some(today));
+    let diagnostics = lint_card_with_policy(&document, &source, Some(today), policy);
     print_preview(&source, &diagnostics);
     if args.team && blocks_team_save(&diagnostics) {
         bail!("team card was not saved because lint reported blocking errors")

@@ -1,0 +1,5 @@
+[lint]
+deny-command-classes = [
+  "remote-pipe-to-shell",
+  "force-push",
+]

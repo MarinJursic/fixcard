@@ -42,6 +42,28 @@ the write. Scanners have false positives and false negatives; humans must still
 review every shared card and the Git diff. Never test the scanner with a real
 credential.
 
+## Repository policy
+
+A repository may forbid command classes even on cards declared `risk: high` by
+committing a bounded `.fixcard.toml` file:
+
+```toml
+[lint]
+deny-command-classes = [
+  "privileged-command",
+  "recursive-deletion",
+  "force-push",
+  "remote-pipe-to-shell",
+  "database-migration",
+  "production-target",
+  "credential-change",
+]
+```
+
+Unknown fields or class names fail closed. The policy affects `lint` and card
+creation; it cannot enable execution or weaken built-in diagnostics. The file
+must be a regular UTF-8 file no larger than 64 KiB.
+
 Report vulnerabilities privately using GitHub's security advisory interface as
 described in the [security policy](../SECURITY.md). The detailed abuse cases and
 controls are in the [threat model](threat-model.md).

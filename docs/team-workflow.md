@@ -3,6 +3,9 @@
 Shared Fixcards are repository-owned documentation. They belong in ordinary
 code review, not in an unreviewed global knowledge base.
 
+Repositories with stricter command boundaries can commit a `.fixcard.toml`
+denylist described in the [security and privacy guide](security-and-privacy.md).
+
 ## Promote deliberately
 
 1. Prove the resolution in one real incident.

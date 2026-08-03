@@ -16,11 +16,16 @@ use fixcard_core::{
     sanitize_terminal, search,
 };
 use fixcard_git::Repository;
-use fixcard_lint::{Diagnostic, Severity, lint_card, lint_card_set, redact_secrets};
+use fixcard_lint::{
+    Diagnostic, LintPolicy, Severity, lint_card_set, lint_card_with_policy, parse_policy,
+    redact_secrets,
+};
 use jiff::Zoned;
 use semver::Version;
 
 const MAX_QUERY_BYTES: usize = 1024 * 1024;
+const MAX_POLICY_BYTES: u64 = 64 * 1024;
+const POLICY_FILE: &str = ".fixcard.toml";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -148,12 +153,22 @@ fn run() -> Result<ExitCode> {
     match cli.command.unwrap_or(Command::Find(FindArgs::default())) {
         Command::Find(args) => find(&repository, &args),
         Command::Show { id } => show(&repository, &id),
-        Command::New(args) => create::create(&repository, &args),
-        Command::Lint { path } => lint(&repository, path.as_deref()),
+        Command::New(args) => {
+            let policy = load_policy(&repository)?;
+            create::create(&repository, &args, &policy)
+        }
+        Command::Lint { path } => {
+            let policy = load_policy(&repository)?;
+            lint(&repository, path.as_deref(), &policy)
+        }
     }
 }
 
-fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitCode> {
+fn lint(
+    repository: &Repository,
+    path: Option<&std::path::Path>,
+    policy: &LintPolicy,
+) -> Result<ExitCode> {
     let lint_set = path.is_none()
         || path.is_some_and(|value| {
             fs::symlink_metadata(value).is_ok_and(|metadata| metadata.file_type().is_dir())
@@ -211,7 +226,7 @@ fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitC
         );
     };
     for (path, source, document) in &cards {
-        for diagnostic in lint_card(document, source, today) {
+        for diagnostic in lint_card_with_policy(document, source, today, policy) {
             print_diagnostic(path, &diagnostic);
         }
         if path.file_stem().and_then(std::ffi::OsStr::to_str) != Some(&document.card.id) {
@@ -253,6 +268,28 @@ fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitC
     } else {
         ExitCode::from(1)
     })
+}
+
+fn load_policy(repository: &Repository) -> Result<LintPolicy> {
+    let path = repository.root.join(POLICY_FILE);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(LintPolicy::default());
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("cannot inspect `{}`", path.display()));
+        }
+    };
+    if !metadata.file_type().is_file() {
+        bail!("Fixcard policy `{}` must be a regular file", path.display())
+    }
+    if metadata.len() > MAX_POLICY_BYTES {
+        bail!("Fixcard policy exceeds the {MAX_POLICY_BYTES}-byte safety limit")
+    }
+    let source = fs::read_to_string(&path)
+        .with_context(|| format!("cannot read Fixcard policy `{}`", path.display()))?;
+    parse_policy(&source).map_err(|error| anyhow!(error))
 }
 
 fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
