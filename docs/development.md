@@ -49,3 +49,5 @@ Version changes update workspace metadata and `CHANGELOG.md`. A release tag is
 built by GitHub Actions into native archives, checksums, a CycloneDX SBOM, and
 artifact attestations. Verify the generated release from a fresh download
 before marking it stable.
+
+The exact maintainer procedure is in the [Release guide](releasing.md).

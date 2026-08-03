@@ -22,6 +22,7 @@
 ## Build and govern the project
 
 - [Development guide](development.md)
+- [Release guide](releasing.md)
 - [Architecture](../ARCHITECTURE.md)
 - [Format v1 draft](../spec/fixcard-v1.md)
 - [Contributing](../CONTRIBUTING.md)

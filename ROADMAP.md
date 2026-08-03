@@ -8,8 +8,8 @@
 - [x] reviewed private/team `new` workflow
 - [x] secret, risk, lifecycle, and quality `lint`
 - [x] 1,000-card performance gate
-- [ ] cross-platform CI and security automation proven green
-- [ ] complete user and authoring documentation
+- [x] cross-platform CI and security automation proven green
+- [x] complete user and authoring documentation
 - [ ] signed/provenance-attested prerelease artifacts with checksums and SBOM
 
 ## Validation before 1.0
@@ -27,4 +27,3 @@ Automatic shell-history capture, generated fixes, model calls, cloud accounts,
 workflow replay, command execution, a public universal fix corpus, a dashboard,
 or an incident-response platform. Evidence may justify editor selection helpers
 or CI lookup later, but integrations are not a substitute for a useful core.
-
