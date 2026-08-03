@@ -310,6 +310,76 @@ fn status_is_actionable_outside_git() {
 }
 
 #[test]
+fn shell_init_generates_an_explicit_fix_wrapper() {
+    let directory = TempDir::new().expect("create directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["shell-init", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("fix() { command fixcard run -- \"$@\"; }\n"));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["shell-init", "powershell"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "function fix { & fixcard run -- @args }",
+        ));
+}
+
+#[cfg(unix)]
+#[test]
+fn generated_bash_fix_wrapper_preserves_literal_arguments() {
+    let directory = TempDir::new().expect("create directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    let fixcard = env!("CARGO_BIN_EXE_fixcard");
+    let generated = Command::new(fixcard)
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["shell-init", "bash"])
+        .output()
+        .expect("generate Bash integration");
+    assert!(generated.status.success());
+
+    let mut script = String::from_utf8(generated.stdout).expect("UTF-8 Bash integration");
+    script.push_str("\nfix printf '%s' '$(not-run);*;$HOME'\n");
+    let binary_directory = Path::new(fixcard)
+        .parent()
+        .expect("fixcard binary directory");
+    let inherited_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut path = vec![binary_directory.to_path_buf()];
+    path.extend(std::env::split_paths(&inherited_path));
+    let path = std::env::join_paths(path).expect("compose PATH");
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .env("PATH", path)
+        .output()
+        .expect("execute generated Bash integration");
+    assert!(
+        output.status.success(),
+        "Bash integration failed: {output:?}"
+    );
+    assert_eq!(output.stdout, b"$(not-run);*;$HOME");
+}
+
+#[test]
+fn generates_shell_completion_definitions() {
+    cargo_bin_cmd!("fixcard")
+        .args(["completion", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("_fixcard"));
+}
+
+#[test]
 fn saves_and_finds_a_user_global_card_outside_git() {
     let directory = TempDir::new().expect("create non-repository directory");
     let data = TempDir::new().expect("create isolated data directory");

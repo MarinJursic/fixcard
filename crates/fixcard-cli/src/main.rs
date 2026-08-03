@@ -23,7 +23,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use fixcard_core::{
     CardOrigin, Confidence, Environment, LoadedCard, MatchResult, Risk, SearchOptions,
     sanitize_terminal, search,
@@ -69,6 +69,18 @@ enum Command {
     List,
     /// Show active storage paths, counts, and repository state.
     Status,
+    /// Print an opt-in shell function named `fix` for explicit command capture.
+    ShellInit {
+        /// Shell whose function syntax should be generated.
+        #[arg(value_enum)]
+        shell: IntegrationShell,
+    },
+    /// Generate command-line completion definitions.
+    Completion {
+        /// Shell whose completion syntax should be generated.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
     /// Create a private card, or explicitly create a repository card.
     New(Box<NewArgs>),
     /// Save a known resolution as a private, repository, or user-global card.
@@ -84,6 +96,15 @@ enum Command {
         /// Card file or directory; defaults to this repository's cards.
         path: Option<PathBuf>,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum IntegrationShell {
+    Bash,
+    Zsh,
+    Fish,
+    #[value(name = "powershell", alias = "power-shell", alias = "pwsh")]
+    PowerShell,
 }
 
 #[derive(Clone, Debug, Default, Args)]
@@ -229,6 +250,8 @@ fn run() -> Result<ExitCode> {
         Command::Show { id } => show(repository.as_ref(), &id),
         Command::List => list(repository.as_ref()),
         Command::Status => status(repository.as_ref()),
+        Command::ShellInit { shell } => shell_init(shell),
+        Command::Completion { shell } => completion(shell),
         Command::New(args) | Command::Save(args) => {
             if !args.global && repository.is_none() {
                 bail!("private and team cards require a Git worktree; use --global outside Git")
@@ -245,6 +268,28 @@ fn run() -> Result<ExitCode> {
             lint(repository, path.as_deref(), &policy)
         }
     }
+}
+
+fn shell_init(shell: IntegrationShell) -> Result<ExitCode> {
+    let source = match shell {
+        IntegrationShell::Bash | IntegrationShell::Zsh => {
+            "fix() { command fixcard run -- \"$@\"; }"
+        }
+        IntegrationShell::Fish => "function fix; command fixcard run -- $argv; end",
+        IntegrationShell::PowerShell => "function fix { & fixcard run -- @args }",
+    };
+    outputln!("{source}")?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn completion(shell: clap_complete::Shell) -> Result<ExitCode> {
+    let mut source = Vec::new();
+    clap_complete::generate(shell, &mut Cli::command(), "fixcard", &mut source);
+    io::stdout()
+        .lock()
+        .write_all(&source)
+        .context("cannot write completion definitions")?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn list(repository: Option<&Repository>) -> Result<ExitCode> {

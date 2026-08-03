@@ -15,6 +15,7 @@
 - [Security and privacy](security-and-privacy.md)
 - [Threat model](threat-model.md)
 - [Validation plan](validation.md)
+- [Release-candidate dogfood program](dogfood.md)
 - [Performance methodology](performance.md)
 - [Research and positioning](research-and-positioning.md)
 - [Name due diligence](naming.md)

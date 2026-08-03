@@ -20,10 +20,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 dialoguer.workspace = true
-fixcard-core = { version = "=1.0.0-rc.1", path = "../fixcard-core" }
-fixcard-git = { version = "=1.0.0-rc.1", path = "../fixcard-git" }
-fixcard-lint = { version = "=1.0.0-rc.1", path = "../fixcard-lint" }
+fixcard-core = { version = "=1.0.0-rc.2", path = "../fixcard-core" }
+fixcard-git = { version = "=1.0.0-rc.2", path = "../fixcard-git" }
+fixcard-lint = { version = "=1.0.0-rc.2", path = "../fixcard-lint" }
 jiff.workspace = true
 semver.workspace = true
 serde_yaml_ng.workspace = true

@@ -2,6 +2,9 @@
 
 Fixcard separates engineering verification from product validation.
 
+Participants use the privacy-preserving [dogfood program](dogfood.md) and submit
+aggregated reports without raw logs or proprietary repository content.
+
 ## Verified in the repository
 
 - the parser rejects malformed, ambiguous, oversized, and unsupported cards;

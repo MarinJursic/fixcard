@@ -23,7 +23,7 @@ With the GitHub CLI, download the archive and verification files for a chosen
 version:
 
 ```bash
-version=1.0.0-rc.1
+version=1.0.0-rc.2
 target=aarch64-apple-darwin
 gh release download "v${version}" \
   --repo MarinJursic/fixcard \
@@ -62,7 +62,7 @@ Install Rust 1.85 or newer, then pin the release tag:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.1 --locked fixcard
+  --tag v1.0.0-rc.2 --locked fixcard
 fixcard --version
 ```
 
@@ -88,6 +88,36 @@ The pinned toolchain in `rust-toolchain.toml` is selected automatically.
 
 `fixcard run --` directly spawns the requested program. On Windows it refuses
 `.bat` and `.cmd` programs because those formats require shell interpretation.
+
+## Optional shell setup
+
+Generate completion definitions without modifying shell configuration:
+
+```bash
+fixcard completion zsh
+```
+
+Generate a small function that makes `fix PROGRAM [ARGS...]` equivalent to
+`fixcard run -- PROGRAM [ARGS...]`:
+
+```bash
+fixcard shell-init zsh
+eval "$(fixcard shell-init zsh)"
+```
+
+Use the activation syntax for the current shell:
+
+| Shell | Current-session activation |
+| --- | --- |
+| Bash | `eval "$(fixcard shell-init bash)"` |
+| Zsh | `eval "$(fixcard shell-init zsh)"` |
+| Fish | `fixcard shell-init fish \| source` |
+| PowerShell | `$fixcardInit = & fixcard shell-init powershell; Invoke-Expression $fixcardInit` |
+
+Fixcard never edits profile files. Inspect the generated output before
+activation, and opt in only if the generic function name `fix` does not
+conflict with an existing command. `power-shell` and `pwsh` remain accepted as
+aliases for `powershell`.
 
 ## Data directories
 
