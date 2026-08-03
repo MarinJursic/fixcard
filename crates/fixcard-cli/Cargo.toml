@@ -10,6 +10,8 @@ repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
+readme = "../../README.md"
+publish = false
 
 [[bin]]
 name = "fixcard"
@@ -20,9 +22,9 @@ anyhow.workspace = true
 clap.workspace = true
 console.workspace = true
 dialoguer.workspace = true
-fixcard-core = { path = "../fixcard-core" }
-fixcard-git = { path = "../fixcard-git" }
-fixcard-lint = { path = "../fixcard-lint" }
+fixcard-core = { version = "=0.1.0", path = "../fixcard-core" }
+fixcard-git = { version = "=0.1.0", path = "../fixcard-git" }
+fixcard-lint = { version = "=0.1.0", path = "../fixcard-lint" }
 jiff.workspace = true
 semver.workspace = true
 serde_yaml_ng.workspace = true

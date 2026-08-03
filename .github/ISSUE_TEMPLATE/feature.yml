@@ -1,0 +1,40 @@
+name: Workflow proposal
+description: Propose a focused improvement backed by a real repository workflow
+title: "proposal: "
+labels: [proposal]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Real workflow
+      description: Describe the repeated failure and current resolution path.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and frequency
+      description: How often does it occur, for whom, and what is the current cost?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Existing alternatives
+      description: Why are a README, script, Atuin, Recall, or another focused tool insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: smallest
+    attributes:
+      label: Smallest useful change
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Product boundaries
+      options:
+        - label: This does not require automatic history capture, AI-generated fixes, cloud sync, or command execution.
+          required: true
+
