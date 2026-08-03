@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::env;
+use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -13,6 +14,7 @@ use fixcard_core::{
     sanitize_terminal, search,
 };
 use fixcard_git::Repository;
+use fixcard_lint::{Severity, lint_card};
 use jiff::Zoned;
 use semver::Version;
 
@@ -96,14 +98,94 @@ fn run() -> Result<ExitCode> {
             let destination = if args.team { "team" } else { "private" };
             bail!("{destination} card creation is not available in this development milestone")
         }
-        Command::Lint { path } => {
-            let target = path.map_or_else(
-                || "repository cards".to_owned(),
-                |value| value.display().to_string(),
+        Command::Lint { path } => lint(&repository, path.as_deref()),
+    }
+}
+
+fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitCode> {
+    let paths = if let Some(path) = path {
+        lint_paths(path)?
+    } else {
+        repository
+            .load_cards()?
+            .into_iter()
+            .map(|card| card.path)
+            .collect()
+    };
+    if paths.is_empty() {
+        println!("No Fixcards found to lint.");
+        return Ok(ExitCode::SUCCESS);
+    }
+    let today = Some(Zoned::now().date());
+    let mut error_count = 0_usize;
+    let mut warning_count = 0_usize;
+    let mut note_count = 0_usize;
+    for path in &paths {
+        let source = fs::read_to_string(path)
+            .with_context(|| format!("cannot read `{}`", path.display()))?;
+        let document = fixcard_core::parse_card(&source)
+            .with_context(|| format!("cannot parse `{}`", path.display()))?;
+        let diagnostics = lint_card(&document, &source, today);
+        for diagnostic in diagnostics {
+            let severity = match diagnostic.severity {
+                Severity::Error => {
+                    error_count += 1;
+                    "error"
+                }
+                Severity::Warning => {
+                    warning_count += 1;
+                    "warning"
+                }
+                Severity::Note => {
+                    note_count += 1;
+                    "note"
+                }
+            };
+            let location = diagnostic.line.map_or_else(
+                || path.display().to_string(),
+                |line| format!("{}:{line}", path.display()),
             );
-            bail!("linting {target} is not available in this development milestone")
+            println!(
+                "{}: {}[{}]: {}",
+                sanitize_terminal(&location),
+                severity,
+                diagnostic.code,
+                sanitize_terminal(&diagnostic.message)
+            );
         }
     }
+    println!(
+        "\nLinted {} card{}: {error_count} error(s), {warning_count} warning(s), {note_count} note(s)",
+        paths.len(),
+        if paths.len() == 1 { "" } else { "s" }
+    );
+    Ok(if error_count == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("cannot inspect `{}`", path.display()))?;
+    if metadata.file_type().is_file() {
+        return Ok(vec![path.to_owned()]);
+    }
+    if !metadata.file_type().is_dir() {
+        bail!("lint path must be a regular file or directory")
+    }
+    let mut paths = fs::read_dir(path)
+        .with_context(|| format!("cannot read `{}`", path.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|candidate| {
+            candidate.extension().and_then(std::ffi::OsStr::to_str) == Some("md")
+                && fs::symlink_metadata(candidate).is_ok_and(|value| value.file_type().is_file())
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
 }
 
 fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {

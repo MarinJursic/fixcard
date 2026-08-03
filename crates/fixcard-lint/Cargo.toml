@@ -12,10 +12,10 @@ repository.workspace = true
 fixcard-core = { path = "../fixcard-core" }
 jiff.workspace = true
 regex.workspace = true
+semver.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 
 [lints]
 workspace = true
-

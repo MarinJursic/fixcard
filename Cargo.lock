@@ -319,6 +319,7 @@ dependencies = [
  "fixcard-core",
  "jiff",
  "regex",
+ "semver",
  "tempfile",
 ]
 
