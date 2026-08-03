@@ -112,6 +112,13 @@ absolute `FIXCARD_DATA_DIR` path to override the base directory.
 
 ## Install
 
+On macOS or Linux, install the checksum-pinned release binary from the
+[Fixcard Homebrew formula](https://github.com/MarinJursic/homebrew-tap/blob/main/Formula/fixcard.rb):
+
+```bash
+brew install MarinJursic/tap/fixcard
+```
+
 Release archives contain a single binary, license, changelog, and README for:
 
 - Linux x86-64 glibc and static musl;
@@ -125,7 +132,8 @@ for exact download and verification steps. A source install requires Rust 1.85
 or newer:
 
 ```bash
-cargo install --git https://github.com/MarinJursic/fixcard --locked fixcard
+cargo install --git https://github.com/MarinJursic/fixcard \
+  --tag v1.0.0-rc.2 --locked fixcard
 ```
 
 ## Commands
