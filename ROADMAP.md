@@ -1,0 +1,30 @@
+# Roadmap
+
+## 0.1 — trustworthy MVP
+
+- [x] v1 Markdown/YAML parser and open draft specification
+- [x] worktree-safe private and shared card discovery
+- [x] deterministic `find` and provenance-aware `show`
+- [x] reviewed private/team `new` workflow
+- [x] secret, risk, lifecycle, and quality `lint`
+- [x] 1,000-card performance gate
+- [ ] cross-platform CI and security automation proven green
+- [ ] complete user and authoring documentation
+- [ ] signed/provenance-attested prerelease artifacts with checksums and SBOM
+
+## Validation before 1.0
+
+- conduct the diary study and concierge test described in the research memo;
+- dogfood in 5–8 active repositories for four weeks;
+- achieve at least 75% judged relevance for strong matches, targeting 85%;
+- demonstrate median creation at or below 20 seconds after a fix is known;
+- demonstrate real reuse by authors or teammates without a serious safety event;
+- publish anonymized methodology and a go/change/stop decision.
+
+## Explicitly not planned
+
+Automatic shell-history capture, generated fixes, model calls, cloud accounts,
+workflow replay, command execution, a public universal fix corpus, a dashboard,
+or an incident-response platform. Evidence may justify editor selection helpers
+or CI lookup later, but integrations are not a substitute for a useful core.
+

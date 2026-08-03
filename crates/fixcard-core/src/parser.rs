@@ -103,12 +103,12 @@ fn validate(card: &Card, body: &str) -> Result<(), ParseError> {
             "created or last_verified is required".to_owned(),
         ));
     }
-    if let Some(verification) = &card.verified
-        && verification.command.trim().is_empty()
-    {
-        return Err(ParseError::Invalid(
-            "verified.command cannot be empty".to_owned(),
-        ));
+    if let Some(verification) = &card.verified {
+        if verification.command.trim().is_empty() {
+            return Err(ParseError::Invalid(
+                "verified.command cannot be empty".to_owned(),
+            ));
+        }
     }
     if card.retired
         && card
