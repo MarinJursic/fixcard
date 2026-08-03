@@ -12,6 +12,7 @@ Fixcard separates engineering verification from product validation.
 - Linux, macOS, Windows, and Rust 1.85 builds are exercised in CI;
 - a 1,000-card benchmark is gated below the 100 ms p95 lookup target on the CI
   reference runner;
+- optimized process startup is gated below the 75 ms p95 target;
 - dependencies are locked, audited, policy-checked, and reviewed.
 
 These are testable implementation claims. They do **not** establish that people

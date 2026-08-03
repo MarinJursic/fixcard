@@ -20,7 +20,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-console.workspace = true
 dialoguer.workspace = true
 fixcard-core = { version = "=0.1.0", path = "../fixcard-core" }
 fixcard-git = { version = "=0.1.0", path = "../fixcard-git" }

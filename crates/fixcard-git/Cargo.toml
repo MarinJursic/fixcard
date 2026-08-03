@@ -12,7 +12,6 @@ publish = false
 [dependencies]
 fixcard-core = { version = "=0.1.0", path = "../fixcard-core" }
 thiserror.workspace = true
-walkdir.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
