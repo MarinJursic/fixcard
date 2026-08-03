@@ -55,6 +55,7 @@ pub fn parse_card(input: &str) -> Result<CardDocument, ParseError> {
     let (front_matter, body) = rest
         .split_once("\n---\n")
         .ok_or(ParseError::MissingFrontMatter)?;
+    reject_unsupported_yaml_syntax(front_matter)?;
     let card: Card = serde_yaml_ng::from_str(front_matter)?;
     validate(&card, body)?;
 
@@ -62,6 +63,96 @@ pub fn parse_card(input: &str) -> Result<CardDocument, ParseError> {
         card,
         body: body.to_owned(),
     })
+}
+
+fn reject_unsupported_yaml_syntax(front_matter: &str) -> Result<(), ParseError> {
+    let mut block_parent_indent = None;
+    for line in front_matter.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+        if let Some(parent_indent) = block_parent_indent {
+            if indent > parent_indent {
+                continue;
+            }
+            block_parent_indent = None;
+        }
+
+        let syntax = visible_yaml_syntax(line);
+        for (index, character) in syntax.char_indices() {
+            if !matches!(character, '&' | '*' | '!') {
+                continue;
+            }
+            let prefix = syntax[..index].trim_end();
+            let begins_node = prefix.is_empty()
+                || prefix.ends_with([':', ',', '[', '{'])
+                || prefix == "-"
+                || prefix.ends_with(" -");
+            if begins_node {
+                return Err(ParseError::Invalid(
+                    "YAML anchors, aliases, and custom tags are not supported in v1".to_owned(),
+                ));
+            }
+        }
+
+        if syntax
+            .rsplit_once(':')
+            .is_some_and(|(_, value)| matches!(value.trim(), "|" | "|-" | "|+" | ">" | ">-" | ">+"))
+        {
+            block_parent_indent = Some(indent);
+        }
+    }
+    Ok(())
+}
+
+fn visible_yaml_syntax(line: &str) -> String {
+    let mut visible = String::with_capacity(line.len());
+    let mut characters = line.chars().peekable();
+    let mut single_quoted = false;
+    let mut double_quoted = false;
+    while let Some(character) = characters.next() {
+        if single_quoted {
+            if character == '\'' {
+                if characters.peek() == Some(&'\'') {
+                    visible.push(' ');
+                    visible.push(' ');
+                    characters.next();
+                    continue;
+                }
+                single_quoted = false;
+            }
+            visible.push(' ');
+            continue;
+        }
+        if double_quoted {
+            if character == '\\' {
+                visible.push(' ');
+                if characters.next().is_some() {
+                    visible.push(' ');
+                }
+                continue;
+            }
+            if character == '"' {
+                double_quoted = false;
+            }
+            visible.push(' ');
+            continue;
+        }
+        match character {
+            '#' => break,
+            '\'' => {
+                single_quoted = true;
+                visible.push(' ');
+            }
+            '"' => {
+                double_quoted = true;
+                visible.push(' ');
+            }
+            _ => visible.push(character),
+        }
+    }
+    visible
 }
 
 fn validate(card: &Card, body: &str) -> Result<(), ParseError> {
@@ -201,5 +292,34 @@ Run the repository generator and review its diff.
     fn rejects_duplicate_mapping_keys() {
         let input = VALID.replace("id: build-failed", "id: build-failed\nid: other");
         assert!(parse_card(&input).is_err());
+    }
+
+    #[test]
+    fn rejects_yaml_aliases() {
+        let input = VALID.replace(
+            "match:\n  exact: [E_GENERATED_STALE]",
+            "x-anchors: &anchors\n  exact: [E_GENERATED_STALE]\nmatch: *anchors",
+        );
+        assert!(parse_card(&input).is_err());
+    }
+
+    #[test]
+    fn rejects_custom_yaml_tags() {
+        let input = VALID.replace("title: Rebuild", "title: !custom Rebuild");
+        assert!(parse_card(&input).is_err());
+    }
+
+    #[test]
+    fn allows_yaml_indicator_characters_inside_data() {
+        let input = VALID
+            .replace(
+                "title: Rebuild the generated client",
+                "title: 'R & D says: use * only as text!'",
+            )
+            .replace(
+                "x-owner: platform",
+                "x-owner: |\n  * this is block text\n  ! so is this",
+            );
+        assert!(parse_card(&input).is_ok());
     }
 }

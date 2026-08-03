@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use dialoguer::{Confirm, Input};
 use fixcard_core::{Applies, Card, MatchSpec, Risk, Verification, parse_card, sanitize_terminal};
 use fixcard_git::Repository;
-use fixcard_lint::{Severity, blocks_team_save, lint_card};
+use fixcard_lint::{Severity, blocks_team_save, lint_card, redact_secrets};
 use jiff::Zoned;
 
 use crate::NewArgs;
@@ -263,7 +263,10 @@ fn render(
 }
 
 fn print_preview(source: &str, diagnostics: &[fixcard_lint::Diagnostic]) {
-    println!("\nPreview\n\n{}", sanitize_terminal(source));
+    println!(
+        "\nPreview\n\n{}",
+        sanitize_terminal(&redact_secrets(source))
+    );
     if diagnostics.is_empty() {
         println!("\nLint: no findings");
         return;

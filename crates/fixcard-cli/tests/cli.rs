@@ -131,6 +131,39 @@ fn shows_the_evidence_notice() {
 }
 
 #[test]
+fn redacts_secret_like_values_when_showing_an_existing_card() {
+    let repository = repository();
+    let secret = "ghp_1234567890abcdefghijklmnopqrst";
+    let source = CARD.replace(
+        "Run the repository generator and review its diff.",
+        &format!("Remove the accidentally recorded token {secret}."),
+    );
+    fs::write(repository.path().join(".fixcards/known-build.md"), source)
+        .expect("write card containing test-shaped secret");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["show", "known-build"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(secret).not())
+        .stdout(predicate::str::contains("[REDACTED]"));
+}
+
+#[test]
+fn lint_reports_an_id_filename_mismatch() {
+    let repository = repository();
+    let original = repository.path().join(".fixcards/known-build.md");
+    let renamed = repository.path().join(".fixcards/wrong-name.md");
+    fs::rename(original, &renamed).expect("rename fixture card");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["lint", renamed.to_str().expect("UTF-8 path")])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("id-filename-mismatch"));
+}
+
+#[test]
 fn fails_clearly_outside_a_repository() {
     let directory = TempDir::new().expect("create non-repository directory");
     cargo_bin_cmd!("fixcard")
@@ -243,6 +276,7 @@ fn blocks_a_secret_from_a_team_card() {
         .args(args)
         .assert()
         .code(2)
+        .stdout(predicate::str::contains("ghp_1234567890abcdefghijklmnopqrst").not())
         .stderr(predicate::str::contains("blocking errors"));
     assert!(
         !repository

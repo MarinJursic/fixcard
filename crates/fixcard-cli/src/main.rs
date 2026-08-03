@@ -16,7 +16,7 @@ use fixcard_core::{
     sanitize_terminal, search,
 };
 use fixcard_git::Repository;
-use fixcard_lint::{Severity, lint_card};
+use fixcard_lint::{Diagnostic, Severity, lint_card, lint_card_set, redact_secrets};
 use jiff::Zoned;
 use semver::Version;
 
@@ -154,6 +154,10 @@ fn run() -> Result<ExitCode> {
 }
 
 fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitCode> {
+    let lint_set = path.is_none()
+        || path.is_some_and(|value| {
+            fs::symlink_metadata(value).is_ok_and(|metadata| metadata.file_type().is_dir())
+        });
     let paths = if let Some(path) = path {
         lint_paths(path)?
     } else {
@@ -171,38 +175,72 @@ fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitC
     let mut error_count = 0_usize;
     let mut warning_count = 0_usize;
     let mut note_count = 0_usize;
+    let mut cards = Vec::with_capacity(paths.len());
     for path in &paths {
         let source = fs::read_to_string(path)
             .with_context(|| format!("cannot read `{}`", path.display()))?;
         let document = fixcard_core::parse_card(&source)
             .with_context(|| format!("cannot parse `{}`", path.display()))?;
-        let diagnostics = lint_card(&document, &source, today);
-        for diagnostic in diagnostics {
-            let severity = match diagnostic.severity {
-                Severity::Error => {
-                    error_count += 1;
-                    "error"
-                }
-                Severity::Warning => {
-                    warning_count += 1;
-                    "warning"
-                }
-                Severity::Note => {
-                    note_count += 1;
-                    "note"
-                }
-            };
-            let location = diagnostic.line.map_or_else(
-                || path.display().to_string(),
-                |line| format!("{}:{line}", path.display()),
+        cards.push((path, source, document));
+    }
+    let mut print_diagnostic = |path: &std::path::Path, diagnostic: &Diagnostic| {
+        let severity = match diagnostic.severity {
+            Severity::Error => {
+                error_count += 1;
+                "error"
+            }
+            Severity::Warning => {
+                warning_count += 1;
+                "warning"
+            }
+            Severity::Note => {
+                note_count += 1;
+                "note"
+            }
+        };
+        let location = diagnostic.line.map_or_else(
+            || path.display().to_string(),
+            |line| format!("{}:{line}", path.display()),
+        );
+        println!(
+            "{}: {}[{}]: {}",
+            sanitize_terminal(&location),
+            severity,
+            diagnostic.code,
+            sanitize_terminal(&diagnostic.message)
+        );
+    };
+    for (path, source, document) in &cards {
+        for diagnostic in lint_card(document, source, today) {
+            print_diagnostic(path, &diagnostic);
+        }
+        if path.file_stem().and_then(std::ffi::OsStr::to_str) != Some(&document.card.id) {
+            print_diagnostic(
+                path,
+                &Diagnostic {
+                    code: "id-filename-mismatch",
+                    severity: Severity::Error,
+                    message: format!(
+                        "card ID `{}` must match its Markdown filename",
+                        document.card.id
+                    ),
+                    line: None,
+                },
             );
-            println!(
-                "{}: {}[{}]: {}",
-                sanitize_terminal(&location),
-                severity,
-                diagnostic.code,
-                sanitize_terminal(&diagnostic.message)
-            );
+        }
+    }
+    if lint_set {
+        let documents = cards
+            .iter()
+            .map(|(_, _, document)| document.clone())
+            .collect::<Vec<_>>();
+        for finding in lint_card_set(&documents) {
+            if let Some((path, _, _)) = cards
+                .iter()
+                .find(|(_, _, document)| document.card.id == finding.card_id)
+            {
+                print_diagnostic(path, &finding.diagnostic);
+            }
         }
     }
     println!(
@@ -226,9 +264,12 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
     if !metadata.file_type().is_dir() {
         bail!("lint path must be a regular file or directory")
     }
-    let mut paths = fs::read_dir(path)
+    let entries = fs::read_dir(path)
         .with_context(|| format!("cannot read `{}`", path.display()))?
-        .filter_map(Result::ok)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .with_context(|| format!("cannot read an entry in `{}`", path.display()))?;
+    let mut paths = entries
+        .into_iter()
         .map(|entry| entry.path())
         .filter(|candidate| {
             candidate.extension().and_then(std::ffi::OsStr::to_str) == Some("md")
@@ -298,14 +339,14 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         .find(|candidate| candidate.document.card.id == id)
         .ok_or_else(|| anyhow!("no card with id `{}`", sanitize_terminal(id)))?;
     let metadata = &card.document.card;
-    println!("{}\n", sanitize_terminal(&metadata.title));
+    println!("{}\n", render_untrusted(&metadata.title));
     println!("Trust");
     println!("  origin: {}", origin(card.origin));
     println!("  risk: {}", risk(metadata.risk));
     if metadata.retired {
         println!("  state: retired");
     } else if let Some(replacement) = &metadata.superseded_by {
-        println!("  state: superseded by {}", sanitize_terminal(replacement));
+        println!("  state: superseded by {}", render_untrusted(replacement));
     } else if metadata.verified.is_none() {
         println!("  state: unverified");
     } else {
@@ -318,10 +359,10 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         println!("  applies: {}", applies(card));
     }
 
-    println!("\n{}", sanitize_terminal(card.document.body.trim()));
+    println!("\n{}", render_untrusted(card.document.body.trim()));
     if let Some(verification) = &metadata.verified {
         println!("\nValidation recorded");
-        println!("  command: {}", sanitize_terminal(&verification.command));
+        println!("  command: {}", render_untrusted(&verification.command));
         if let Some(exit_code) = verification.exit_code {
             println!("  observed exit: {exit_code}");
         }
@@ -333,7 +374,7 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         if let Some(provenance) = repository.provenance(&card.path)? {
             println!("\nGit provenance");
             println!("  commit: {}", provenance.commit);
-            println!("  author: {}", sanitize_terminal(&provenance.author));
+            println!("  author: {}", render_untrusted(&provenance.author));
             println!("  authored: {}", provenance.authored_at);
         }
     }
@@ -394,8 +435,8 @@ fn environment(values: &[String]) -> Result<Environment> {
 
 fn print_summary(result: &MatchResult<'_>, explain: bool) {
     let card = &result.card.document.card;
-    println!("{}", sanitize_terminal(&card.id));
-    println!("{}", sanitize_terminal(&card.title));
+    println!("{}", render_untrusted(&card.id));
+    println!("{}", render_untrusted(&card.title));
     let mut states = vec![
         origin(result.card.origin).to_owned(),
         risk(card.risk).to_owned(),
@@ -417,14 +458,14 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) {
     if explain {
         println!("score: {}", result.score);
         for item in &result.evidence {
-            println!("  {:+} {}", item.points, sanitize_terminal(&item.reason));
+            println!("  {:+} {}", item.points, render_untrusted(&item.reason));
         }
     } else {
         let anchors = result
             .evidence
             .iter()
             .filter(|item| matches!(item.points, 12 | 50))
-            .map(|item| sanitize_terminal(&item.reason))
+            .map(|item| render_untrusted(&item.reason))
             .collect::<Vec<_>>();
         if !anchors.is_empty() {
             println!("matched: {}", anchors.join(", "));
@@ -463,7 +504,11 @@ fn applies(card: &LoadedCard) -> String {
             .iter()
             .map(|(tool, requirement)| format!("{tool} {requirement}")),
     );
-    sanitize_terminal(&parts.join(" · "))
+    render_untrusted(&parts.join(" · "))
+}
+
+fn render_untrusted(value: &str) -> String {
+    sanitize_terminal(&redact_secrets(value))
 }
 
 const fn risk(value: Risk) -> &'static str {
