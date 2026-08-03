@@ -23,6 +23,8 @@ dialoguer.workspace = true
 fixcard-core = { path = "../fixcard-core" }
 fixcard-git = { path = "../fixcard-git" }
 fixcard-lint = { path = "../fixcard-lint" }
+jiff.workspace = true
+semver.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
@@ -31,4 +33,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-

@@ -280,7 +280,9 @@ dependencies = [
  "fixcard-core",
  "fixcard-git",
  "fixcard-lint",
+ "jiff",
  "predicates",
+ "semver",
  "tempfile",
 ]
 
