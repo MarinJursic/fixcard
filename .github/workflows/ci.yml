@@ -27,6 +27,8 @@ jobs:
         run: rustup show active-toolchain
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Validate GitHub issue forms
+        run: ruby scripts/check_issue_forms.rb
       - name: Lint all targets and features
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test all features

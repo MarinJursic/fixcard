@@ -4,6 +4,9 @@ Fixcard separates engineering verification from product validation.
 
 Participants use the privacy-preserving [dogfood program](dogfood.md) and submit
 aggregated reports without raw logs or proprietary repository content.
+The non-leading diary and concierge protocols are in
+[Pre-pilot research](research-study.md). Current evidence and missing gates are
+published in [Validation results](validation-results.md).
 
 ## Verified in the repository
 
@@ -45,39 +48,60 @@ will create cards or that strong matches are relevant in diverse repositories.
 
 ### Stage 1 — diary and interviews
 
-Recruit developers maintaining active repositories. For two weeks, collect only
-sanitized metadata about failures that took meaningful time to solve: recurrence,
-repository specificity, discoverability, and whether a permanent fix was made.
-Do not ask participants to upload raw proprietary logs.
+Recruit 24–30 developers spanning product/backend, platform/infrastructure,
+data/ML, and open-source contexts; junior through staff roles; and macOS,
+Linux, and Windows. Do not pitch Fixcard before the diary. For two working
+weeks, record failures taking more than five minutes, recurrence, repository
+specificity, discoverability, and whether a permanent fix was made. Raw excerpts
+stay with the participant and are never submitted publicly.
+
+Pass only when at least one-third of participants record two or more meaningful
+failures whose resolution could plausibly help a future repository user.
 
 ### Stage 2 — concierge capture
 
-For qualifying incidents, draft the card with the participant immediately after
-the fix. Measure median authoring time, fields omitted, privacy edits, and whether
-the participant judges the card worth keeping. This validates the workflow
-before adding integrations.
+Each participant creates three cards from real prior failures. Test controlled
+variants with changed paths, line numbers, and versions. Measure creation time,
+correct first retrieval, metadata comprehension, privacy edits, comparative
+trust, and whether maintainers would accept shared cards.
+
+Pass only when median concierge creation is at most 30 seconds, at least 70% of
+seeded recurrences return the correct card first, at least 60% of participants
+prefer its trustworthiness to a generic generated answer, and at least five
+repository maintainers accept committed cards after reviewing real examples.
 
 ### Stage 3 — four-week dogfood
 
-Use Fixcard in 5–8 active repositories. Label each shown strong match as relevant
-or not, track abstentions, record reuse by author versus teammate, and review all
-secret/risk findings. Publish only aggregated, anonymized results and methodology.
+Use one exact Fixcard build in 5–8 active repositories for four weeks. Label each
+shown strong match as relevant or not, track abstentions and end-to-end lookup
+time, record capture and reuse by author versus teammate, track normal pull-request
+review of shared cards, and review every secret/risk finding. Publish only
+aggregated, anonymized results and methodology.
 
 ## Go/change/stop thresholds
 
-Promote the release candidate to stable 1.0 only if:
+Promote the exact tested release candidate to stable 1.0 only if every stage
+passes and the four-week pilot meets all core thresholds:
 
-- at least 75% of strong rank-one matches are judged relevant, targeting 85%;
-- median card creation is at most 20 seconds once the fix is known;
-- multiple cards are reused by authors or teammates;
-- no serious secret exposure or unsafe-action incident occurs;
-- maintenance burden remains acceptable to participating repositories.
+| Metric | Required signal |
+| --- | --- |
+| Match precision | At least 75% of strong rank-one matches judged relevant; target 85% before broad promotion |
+| Lookup latency | Search below 100 ms and the full human lookup flow usually below 10 seconds |
+| Creation friction | Median at or below 20 seconds after the resolution is known |
+| Capture behavior | At least 50% of weekly active pilot users create three or more cards |
+| Reuse | At least 30% of active users consume a prior card within four weeks, or a teammate consumes one |
+| Team acceptance | At least five shared cards accepted through normal pull-request review across multiple repositories |
+| Trust | No serious incident caused by misleading certainty or automatic execution |
+| Privacy | No undetected real secret in the pilot corpus and false-positive burden low enough that scanning is not bypassed |
+| Differentiation | A majority of pilot users can explain why Fixcard is not simply history, Atuin, Recall, Navi, or a README |
+| Maintenance | Burden remains acceptable to participating repositories |
 
 Change the capture or matching design if usefulness exists but a threshold
 misses. Stop expanding the product if developers consistently decline capture,
 reuse is negligible, strong-match relevance stays below 60% after one focused
-iteration, or safe sharing requires burdensome process. Do not use card count,
-stars, or total searches as substitutes for relevance and reuse.
+iteration, or safe sharing requires burdensome process. Evidence from synthetic
+incidents, stars, downloads, total card count, or same-day engineering tests
+cannot substitute for these behavioral gates.
 
 The strongest question is: **did a developer encounter a real failure, receive
 the right repository-owned record at the right moment, and safely resolve the
