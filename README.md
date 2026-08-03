@@ -65,6 +65,19 @@ A standalone process cannot portably recover output that was printed before it
 started. Fixcard therefore does not scrape terminal scrollback, read the
 clipboard, or silently rerun the previous command.
 
+If you want the literal `fix` command, opt in for the current shell session:
+
+```bash
+eval "$(fixcard shell-init zsh)"
+fix pnpm install --frozen-lockfile
+```
+
+The generated function is only a shorter spelling of `fixcard run --`: it runs
+the command you provide and looks up a known resolution if that command fails.
+It does not execute card text or pretend it can recover an earlier failure.
+Shell-specific setup for Bash, Fish, and PowerShell is in the
+[installation guide](docs/installation.md#optional-shell-setup).
+
 ## Save what worked
 
 The default interactive flow asks only for a title, stable failure excerpt, and
@@ -125,6 +138,8 @@ cargo install --git https://github.com/MarinJursic/fixcard --locked fixcard
 | `fixcard show [scope:]id` | Display one complete inert card and available provenance. |
 | `fixcard list` | List available cards using stable scoped references. |
 | `fixcard status` | Show storage paths, repository detection, and card counts. |
+| `fixcard shell-init <shell>` | Print an opt-in `fix` function for explicit command capture. |
+| `fixcard completion <shell>` | Generate shell completion definitions. |
 | `fixcard lint [path]` | Strictly validate schema, anchors, versions, secrets, risk, lifecycle, and staleness. |
 | `fixcard find [text]` | Compatibility name for direct lookup. |
 | `fixcard new [...]` | Compatibility name for authoring. |
@@ -163,6 +178,7 @@ repository's license and contribution rules.
 - [Getting started](docs/getting-started.md)
 - [Card authoring](docs/card-authoring.md)
 - [Matching and confidence](docs/matching.md)
+- [Release-candidate dogfood program](docs/dogfood.md)
 - [Examples](docs/examples.md)
 - [Architecture](ARCHITECTURE.md)
 - [Contributing](CONTRIBUTING.md)

@@ -8,7 +8,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 authors = ["Fixcard contributors"]
 edition = "2024"
 rust-version = "1.85"
@@ -22,6 +22,7 @@ categories = ["command-line-utilities", "development-tools"]
 anyhow = "1.0"
 assert_cmd = "2.0"
 clap = { version = "4.5", features = ["derive", "wrap_help"] }
+clap_complete = "4.5"
 dialoguer = "0.12"
 jiff = { version = "0.2", features = ["serde"] }
 predicates = "3.1"

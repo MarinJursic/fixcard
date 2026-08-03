@@ -20,6 +20,17 @@ This mode uses pipes rather than a pseudo-terminal. A program may disable color
 or interactive prompts. Run TTY-dependent commands normally and pass their
 failure text to `fixcard fix` afterward.
 
+For a shorter opt-in spelling in the current shell:
+
+```bash
+eval "$(fixcard shell-init zsh)"
+fix pnpm install --frozen-lockfile
+```
+
+Use `bash`, `zsh`, `fish`, or `powershell` as appropriate. Inspect the emitted
+function before adding it to a shell profile. It delegates to `fixcard run --`
+and therefore preserves the same direct-argv, no-card-execution contract.
+
 ## 2. Look up text you already have
 
 Pass stable error fragments as arguments:

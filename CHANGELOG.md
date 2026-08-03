@@ -7,6 +7,22 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-08-03
+
+### Adoption additions
+
+- Opt-in `shell-init` output for a literal `fix PROGRAM [ARGS...]` wrapper around
+  the safe, explicit `fixcard run --` workflow.
+- Native completion generation for Bash, Zsh, Fish, PowerShell, and Elvish.
+- A privacy-preserving four-week dogfood protocol and structured, sanitized
+  validation-report issue form.
+
+### Adoption changes
+
+- Expanded command-line integration tests to execute the generated Bash wrapper
+  and prove that shell metacharacters remain literal arguments.
+- Routed completion output through Fixcard's clean broken-pipe handling.
+
 ## [1.0.0-rc.1] - 2026-08-03
 
 ### Release candidate additions
@@ -69,6 +85,7 @@ candidate until the documented product-validation gates pass.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
 [Unreleased]: https://github.com/MarinJursic/fixcard/commits/main
+[1.0.0-rc.2]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.2...v1.0.0-rc.1
 [0.1.0-alpha.2]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/MarinJursic/fixcard/compare/7685c83...v0.1.0-alpha.1
