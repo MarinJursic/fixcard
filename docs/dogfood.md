@@ -1,8 +1,10 @@
 # Release-candidate dogfood program
 
-Fixcard reaches stable 1.0 only after real use supports the thresholds in
-[Validation](validation.md). This program collects that evidence without
-telemetry or raw development logs.
+Fixcard reaches stable 1.0 only after every stage in
+[Validation](validation.md) passes. This program covers the four-week Stage 3
+pilot and collects evidence without telemetry or raw development logs. The
+Stage 1 and 2 protocols are separate because problem diaries must not begin by
+pitching Fixcard.
 
 ## Who should participate
 
@@ -19,6 +21,10 @@ covering more than one ecosystem and both personal and team use where possible.
 4. Use `fixcard run -- PROGRAM [ARGS...]`, or opt into
    `fix PROGRAM [ARGS...]` after inspecting `fixcard shell-init <shell>`.
 5. Do not create synthetic successes. Record normal development incidents.
+
+Before the first incident, record a stable random repository alias, the exact
+output of `fixcard --version`, the number of pilot users with repository access,
+and the report week. Never use the real repository name as its alias.
 
 ## Private local worksheet
 
@@ -57,9 +63,13 @@ issue.
 After four weeks, maintainers aggregate only the submitted counts and publish:
 
 - strong rank-one relevance and its denominator;
+- end-to-end lookup duration and whether Fixcard was used before other tools;
 - median observed authoring time and sample size;
-- author and teammate reuse counts;
-- safety incidents and maintenance burden;
+- weekly active-user capture behavior and its denominator;
+- author and teammate reuse rates and counts;
+- shared-card acceptance through normal pull-request review;
+- scanner catches, false positives, missed secrets, and safety incidents;
+- differentiation responses and maintenance burden;
 - repository/ecosystem coverage;
 - an explicit go, change, or stop decision.
 
