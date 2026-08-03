@@ -10,14 +10,17 @@ macro_rules! outputln {
 }
 
 mod create;
+mod runner;
 
 use std::collections::BTreeMap;
 use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand};
@@ -25,7 +28,9 @@ use fixcard_core::{
     CardOrigin, Confidence, Environment, LoadedCard, MatchResult, Risk, SearchOptions,
     sanitize_terminal, search,
 };
-use fixcard_git::Repository;
+use fixcard_git::{
+    MAX_CARDS, MAX_DIRECTORY_ENTRIES, MAX_SOURCE_BYTES, Repository, load_user_cards_resilient,
+};
 use fixcard_lint::{
     Diagnostic, LintPolicy, Severity, lint_card_set, lint_card_with_policy, parse_policy,
     redact_secrets,
@@ -51,6 +56,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Show the complete best known fix for a failure.
+    Fix(FindArgs),
     /// Find cards matching a pasted failure.
     Find(FindArgs),
     /// Show a complete card and its recorded evidence.
@@ -60,6 +67,14 @@ enum Command {
     },
     /// Create a private card, or explicitly create a repository card.
     New(Box<NewArgs>),
+    /// Save a known resolution as a private, repository, or user-global card.
+    Save(Box<NewArgs>),
+    /// Run one explicit command and look up a known fix if it fails.
+    Run {
+        /// Program and arguments to run after `--`.
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<OsString>,
+    },
     /// Validate cards and flag unsafe or stale content.
     Lint {
         /// Card file or directory; defaults to this repository's cards.
@@ -95,6 +110,9 @@ struct NewArgs {
     /// Save to `.fixcards/` for Git review instead of private clone storage.
     #[arg(long)]
     team: bool,
+    /// Save for reuse across all repositories in the per-user data directory.
+    #[arg(long, conflicts_with = "team")]
+    global: bool,
     /// Stable lowercase ID; prompted when omitted in a terminal.
     #[arg(long)]
     id: Option<String>,
@@ -160,10 +178,31 @@ fn main() -> ExitCode {
     }
 }
 
+static OUTPUT_TO_STDERR: AtomicBool = AtomicBool::new(false);
+
 fn write_stdout(arguments: fmt::Arguments<'_>) -> io::Result<()> {
-    let mut stdout = io::stdout().lock();
-    stdout.write_fmt(arguments)?;
-    stdout.write_all(b"\n")
+    if OUTPUT_TO_STDERR.load(Ordering::Relaxed) {
+        let mut stderr = io::stderr().lock();
+        stderr.write_fmt(arguments)?;
+        stderr.write_all(b"\n")
+    } else {
+        let mut stdout = io::stdout().lock();
+        stdout.write_fmt(arguments)?;
+        stdout.write_all(b"\n")
+    }
+}
+
+struct StderrOutputGuard;
+
+impl Drop for StderrOutputGuard {
+    fn drop(&mut self) {
+        OUTPUT_TO_STDERR.store(false, Ordering::Relaxed);
+    }
+}
+
+fn output_to_stderr() -> StderrOutputGuard {
+    OUTPUT_TO_STDERR.store(true, Ordering::Relaxed);
+    StderrOutputGuard
 }
 
 fn is_broken_pipe(error: &anyhow::Error) -> bool {
@@ -177,24 +216,34 @@ fn is_broken_pipe(error: &anyhow::Error) -> bool {
 fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     let current = env::current_dir().context("cannot determine current directory")?;
-    let repository = Repository::discover(&current)
-        .map_err(|error| anyhow!("Fixcard must run inside a Git worktree ({error})"))?;
-    match cli.command.unwrap_or(Command::Find(FindArgs::default())) {
-        Command::Find(args) => find(&repository, &args),
-        Command::Show { id } => show(&repository, &id),
-        Command::New(args) => {
-            let policy = load_policy(&repository)?;
-            create::create(&repository, &args, &policy)
+    let repository = Repository::discover(&current).ok();
+    match cli.command.unwrap_or(Command::Fix(FindArgs::default())) {
+        Command::Fix(args) | Command::Find(args) => find(repository.as_ref(), &args),
+        Command::Show { id } => show(repository.as_ref(), &id),
+        Command::New(args) | Command::Save(args) => {
+            if !args.global && repository.is_none() {
+                bail!("private and team cards require a Git worktree; use --global outside Git")
+            }
+            let policy = repository
+                .as_ref()
+                .map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
+            create::create(repository.as_ref(), &args, &policy)
         }
+        Command::Run { command } => runner::run_and_find(repository.as_ref(), &command),
         Command::Lint { path } => {
-            let policy = load_policy(&repository)?;
-            lint(&repository, path.as_deref(), &policy)
+            let repository = repository.as_ref();
+            let policy = repository.map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
+            lint(repository, path.as_deref(), &policy)
         }
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "lint keeps bounded loading, per-card checks, set checks, and summary accounting together"
+)]
 fn lint(
-    repository: &Repository,
+    repository: Option<&Repository>,
     path: Option<&std::path::Path>,
     policy: &LintPolicy,
 ) -> Result<ExitCode> {
@@ -205,8 +254,7 @@ fn lint(
     let paths = if let Some(path) = path {
         lint_paths(path)?
     } else {
-        repository
-            .load_cards()?
+        load_available_cards(repository)?
             .into_iter()
             .map(|card| card.path)
             .collect()
@@ -220,7 +268,14 @@ fn lint(
     let mut warning_count = 0_usize;
     let mut note_count = 0_usize;
     let mut cards = Vec::with_capacity(paths.len());
+    let mut aggregate_source_bytes = 0_u64;
     for path in &paths {
+        let metadata = fs::symlink_metadata(path)
+            .with_context(|| format!("cannot inspect `{}`", path.display()))?;
+        aggregate_source_bytes = aggregate_source_bytes.saturating_add(metadata.len());
+        if aggregate_source_bytes > MAX_SOURCE_BYTES {
+            bail!("lint input exceeds the {MAX_SOURCE_BYTES}-byte aggregate safety limit")
+        }
         let source = fs::read_to_string(path)
             .with_context(|| format!("cannot read `{}`", path.display()))?;
         let document = fixcard_core::parse_card(&source)
@@ -331,32 +386,49 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
     if !metadata.file_type().is_dir() {
         bail!("lint path must be a regular file or directory")
     }
-    let entries = fs::read_dir(path)
-        .with_context(|| format!("cannot read `{}`", path.display()))?
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .with_context(|| format!("cannot read an entry in `{}`", path.display()))?;
-    let mut paths = entries
-        .into_iter()
-        .map(|entry| entry.path())
-        .filter(|candidate| {
-            candidate.extension().and_then(std::ffi::OsStr::to_str) == Some("md")
-                && fs::symlink_metadata(candidate).is_ok_and(|value| value.file_type().is_file())
-        })
-        .collect::<Vec<_>>();
+    let entries =
+        fs::read_dir(path).with_context(|| format!("cannot read `{}`", path.display()))?;
+    let mut paths = Vec::new();
+    for (index, entry) in entries.enumerate() {
+        if index >= MAX_DIRECTORY_ENTRIES {
+            bail!("lint directory exceeds the {MAX_DIRECTORY_ENTRIES}-entry safety limit")
+        }
+        let candidate = entry
+            .with_context(|| format!("cannot read an entry in `{}`", path.display()))?
+            .path();
+        if candidate.extension().and_then(std::ffi::OsStr::to_str) == Some("md")
+            && fs::symlink_metadata(&candidate).is_ok_and(|value| value.file_type().is_file())
+        {
+            if paths.len() >= MAX_CARDS {
+                bail!("lint directory exceeds the {MAX_CARDS}-card safety limit")
+            }
+            paths.push(candidate);
+        }
+    }
     paths.sort();
     Ok(paths)
 }
 
-fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {
+fn find(repository: Option<&Repository>, args: &FindArgs) -> Result<ExitCode> {
     let query = read_query(&args.query)?;
+    find_query(repository, args, &query)
+}
+
+fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> Result<ExitCode> {
     if query.trim().is_empty() {
         bail!("the failure text is empty")
     }
-    let cards = repository.load_cards()?;
+    let cards = load_available_cards(repository)?;
     if cards.is_empty() {
-        outputln!("No Fixcards exist in this repository yet.")?;
-        outputln!("Shared cards: {}", repository.shared_cards.display())?;
-        outputln!("Private cards: {}", repository.private_cards.display())?;
+        outputln!("No Fixcards are available yet.")?;
+        if let Some(repository) = repository {
+            outputln!("Repository cards: {}", repository.shared_cards.display())?;
+            outputln!(
+                "Clone-private cards: {}",
+                repository.private_cards.display()
+            )?;
+        }
+        outputln!("User-global cards: {}", user_cards_path()?.display())?;
         return Ok(ExitCode::from(1));
     }
     let environment = environment(&args.tools)?;
@@ -365,23 +437,24 @@ fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {
         today: Some(Zoned::now().date()),
         ..SearchOptions::default()
     };
-    let results = search(&query, &cards, &environment, &options);
+    let results = search(query, &cards, &environment, &options);
     let strong = results
         .iter()
         .filter(|result| result.confidence == Confidence::Strong)
         .collect::<Vec<_>>();
 
     if let Some(best) = strong.first() {
-        outputln!("1 strong repository match\n")?;
-        print_summary(best, args.explain)?;
-        outputln!("\nRun: fixcard show {}", best.card.document.card.id)?;
+        outputln!("1 strong Fixcard match\n")?;
+        print_match_evidence(best, args.explain)?;
+        outputln!()?;
+        print_card(repository, best.card)?;
         if args.all {
             print_other_candidates(&results, &best.card.document.card.id, args.explain)?;
         }
         return Ok(ExitCode::SUCCESS);
     }
 
-    outputln!("No strong repository match.")?;
+    outputln!("No strong Fixcard match.")?;
     if results.is_empty() {
         return Ok(ExitCode::from(1));
     }
@@ -399,16 +472,45 @@ fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {
     Ok(ExitCode::from(1))
 }
 
-fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
-    let cards = repository.load_cards()?;
-    let card = cards
+fn show(repository: Option<&Repository>, id: &str) -> Result<ExitCode> {
+    let cards = load_available_cards(repository)?;
+    let (scope, bare_id) = id
+        .split_once(':')
+        .map_or((None, id), |(scope, id)| (Some(scope), id));
+    let candidates = cards
         .iter()
-        .find(|candidate| candidate.document.card.id == id)
+        .filter(|candidate| candidate.document.card.id == bare_id)
+        .filter(|candidate| match scope {
+            None => true,
+            Some("repo") => candidate.origin == CardOrigin::Shared,
+            Some("private") => candidate.origin == CardOrigin::Private,
+            Some("global") => candidate.origin == CardOrigin::User,
+            Some(_) => false,
+        })
+        .collect::<Vec<_>>();
+    if scope.is_some_and(|value| !matches!(value, "repo" | "private" | "global")) {
+        bail!("unknown card scope; use repo:, private:, or global:")
+    }
+    if candidates.len() > 1 {
+        let safe_id = sanitize_terminal(bare_id);
+        bail!(
+            "card id `{safe_id}` exists in multiple scopes; use repo:{safe_id}, private:{safe_id}, or global:{safe_id}"
+        )
+    }
+    let card = candidates
+        .first()
+        .copied()
         .ok_or_else(|| anyhow!("no card with id `{}`", sanitize_terminal(id)))?;
+    print_card(repository, card)?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn print_card(repository: Option<&Repository>, card: &LoadedCard) -> Result<()> {
     let metadata = &card.document.card;
     outputln!("{}\n", render_untrusted(&metadata.title))?;
+    outputln!("Card: {}", render_untrusted(&metadata.id))?;
     outputln!("Trust")?;
-    outputln!("  origin: {}", origin(card.origin))?;
+    outputln!("  origin: {}", trust_label(card))?;
     outputln!("  risk: {}", risk(metadata.risk))?;
     if metadata.retired {
         outputln!("  state: retired")?;
@@ -446,8 +548,12 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
             outputln!("  source commit: {}", sanitize_terminal(commit))?;
         }
     }
-    if card.origin == CardOrigin::Shared {
-        if let Some(provenance) = repository.provenance(&card.path)? {
+    if card.committed {
+        if let Some(provenance) = repository
+            .map(|value| value.provenance(&card.path))
+            .transpose()?
+            .flatten()
+        {
             outputln!("\nGit provenance")?;
             outputln!("  commit: {}", provenance.commit)?;
             outputln!("  author: {}", render_untrusted(&provenance.author))?;
@@ -457,7 +563,61 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
     outputln!(
         "\nThis is evidence of a previous resolution, not a guarantee. Review commands before running them."
     )?;
-    Ok(ExitCode::SUCCESS)
+    Ok(())
+}
+
+fn load_available_cards(repository: Option<&Repository>) -> Result<Vec<LoadedCard>> {
+    let mut report = if let Some(repository) = repository {
+        repository.load_cards_resilient()?
+    } else {
+        fixcard_git::LoadReport::default()
+    };
+    let user_report = load_user_cards_resilient(&user_cards_path()?)?;
+    report.cards.extend(user_report.cards);
+    report.diagnostics.extend(user_report.diagnostics);
+    for diagnostic in report.diagnostics.iter().take(20) {
+        let _ = writeln!(
+            io::stderr().lock(),
+            "warning: skipped `{}`: {}",
+            sanitize_terminal(&diagnostic.path.display().to_string()),
+            sanitize_terminal(&diagnostic.message)
+        );
+    }
+    if report.diagnostics.len() > 20 {
+        let _ = writeln!(
+            io::stderr().lock(),
+            "warning: {} additional invalid-card diagnostic(s) suppressed",
+            report.diagnostics.len() - 20
+        );
+    }
+    Ok(report.cards)
+}
+
+fn user_cards_path() -> Result<PathBuf> {
+    if let Some(base) = env::var_os("FIXCARD_DATA_DIR") {
+        let base = PathBuf::from(base);
+        if !base.is_absolute() {
+            bail!("FIXCARD_DATA_DIR must be an absolute path")
+        }
+        return Ok(base.join("cards"));
+    }
+    #[cfg(target_os = "windows")]
+    let base = env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let base = env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Library/Application Support"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let base = env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".local/share"))
+        });
+    base.map(|path| path.join("fixcard/cards"))
+        .ok_or_else(|| anyhow!("cannot determine the per-user Fixcard data directory"))
 }
 
 fn read_query(arguments: &[String]) -> Result<String> {
@@ -469,7 +629,9 @@ fn read_query(arguments: &[String]) -> Result<String> {
         return Ok(query);
     }
     if io::stdin().is_terminal() {
-        let _ = writeln!(io::stderr().lock(), "Paste the failure, then press Ctrl-D:");
+        bail!(
+            "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
+        )
     }
     let mut bytes = Vec::new();
     io::stdin()
@@ -514,7 +676,7 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) -> Result<()> {
     outputln!("{}", render_untrusted(&card.id))?;
     outputln!("{}", render_untrusted(&card.title))?;
     let mut states = vec![
-        origin(result.card.origin).to_owned(),
+        trust_label(result.card).to_owned(),
         risk(card.risk).to_owned(),
     ];
     if card.verified.is_none() {
@@ -546,6 +708,26 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) -> Result<()> {
         if !anchors.is_empty() {
             outputln!("matched: {}", anchors.join(", "))?;
         }
+    }
+    Ok(())
+}
+
+fn print_match_evidence(result: &MatchResult<'_>, explain: bool) -> Result<()> {
+    if explain {
+        outputln!("Match score: {}", result.score)?;
+        for item in &result.evidence {
+            outputln!("  {:+} {}", item.points, render_untrusted(&item.reason))?;
+        }
+        return Ok(());
+    }
+    let anchors = result
+        .evidence
+        .iter()
+        .filter(|item| matches!(item.points, 12 | 50))
+        .map(|item| render_untrusted(&item.reason))
+        .collect::<Vec<_>>();
+    if !anchors.is_empty() {
+        outputln!("Matched: {}", anchors.join(", "))?;
     }
     Ok(())
 }
@@ -597,10 +779,12 @@ const fn risk(value: Risk) -> &'static str {
     }
 }
 
-const fn origin(value: CardOrigin) -> &'static str {
-    match value {
-        CardOrigin::Private => "private",
-        CardOrigin::Shared => "repo-reviewed",
+const fn trust_label(card: &LoadedCard) -> &'static str {
+    match (card.origin, card.committed) {
+        (CardOrigin::Private, _) => "private",
+        (CardOrigin::Shared, true) => "repository-committed",
+        (CardOrigin::Shared, false) => "repository-working-copy",
+        (CardOrigin::User, _) => "user-global",
     }
 }
 

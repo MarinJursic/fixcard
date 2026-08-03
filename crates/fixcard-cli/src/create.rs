@@ -14,14 +14,14 @@ use fixcard_lint::{LintPolicy, Severity, blocks_team_save, lint_card_with_policy
 use jiff::Zoned;
 use semver::VersionReq;
 
-use crate::NewArgs;
+use crate::{NewArgs, user_cards_path};
 
 #[allow(
     clippy::too_many_lines,
     reason = "creation is a linear reviewed transaction whose ordering is safety-relevant"
 )]
 pub(super) fn create(
-    repository: &Repository,
+    repository: Option<&Repository>,
     args: &NewArgs,
     policy: &LintPolicy,
 ) -> Result<ExitCode> {
@@ -36,54 +36,21 @@ pub(super) fn create(
             interactive,
         )?);
     }
-    let contains = if args.contains.is_empty() && interactive {
-        split_optional(&prompt(
-            "Additional match fragments (comma-separated, optional)",
-            "",
-        )?)
-    } else {
-        args.contains.clone()
-    };
-    let not_contains = if args.not_contains.is_empty() && interactive {
-        split_optional(&prompt(
-            "Contradicting match fragments (comma-separated, optional)",
-            "",
-        )?)
-    } else {
-        args.not_contains.clone()
-    };
-    let applies_tools = if args.applies_tools.is_empty() && interactive {
-        split_optional(&prompt(
-            "Applicable tool ranges (NAME=RANGE, comma-separated, optional)",
-            "",
-        )?)
-    } else {
-        args.applies_tools.clone()
-    };
-    let why = optional(args.why.clone(), "Why this happens (optional)", interactive)?;
-    let do_not_apply = optional(
-        args.do_not_apply.clone(),
-        "Do not apply when (optional)",
-        interactive,
-    )?;
+    let contains = args.contains.clone();
+    let not_contains = args.not_contains.clone();
+    let applies_tools = args.applies_tools.clone();
+    let why = args.why.clone();
+    let do_not_apply = args.do_not_apply.clone();
     let resolution = required(args.resolution.clone(), "What worked here", interactive)?;
-    let commands = if args.commands.is_empty() && interactive {
-        split_optional(&prompt(
-            "Commands to review (semicolon-separated, optional)",
-            "",
-        )?)
-    } else {
-        args.commands.clone()
-    };
-    let validation_command = optional(
-        args.validation_command.clone(),
-        "Validation command (optional)",
-        interactive,
-    )?;
+    let commands = args.commands.clone();
+    let validation_command = args.validation_command.clone();
     let risk = parse_risk(&args.risk)?;
     let today = Zoned::now().date();
     let source_commit = if validation_command.is_some() {
-        repository.head_commit()?
+        repository
+            .map(Repository::head_commit)
+            .transpose()?
+            .flatten()
     } else {
         None
     };
@@ -96,7 +63,12 @@ pub(super) fn create(
     let authors = if args.no_author {
         Vec::new()
     } else {
-        repository.author_name()?.into_iter().collect()
+        repository
+            .map(Repository::author_name)
+            .transpose()?
+            .flatten()
+            .into_iter()
+            .collect()
     };
     let tools = parse_tool_ranges(&applies_tools)?;
     let (os, arch) = if args.no_platform {
@@ -155,7 +127,7 @@ pub(super) fn create(
             return Ok(ExitCode::from(1));
         }
     }
-    let directory = prepare_directory(repository, args.team)?;
+    let directory = prepare_directory(repository, args.team, args.global)?;
     let path = directory.join(format!("{}.md", document.card.id));
     if fs::symlink_metadata(&path).is_ok() {
         bail!("refusing to overwrite `{}`", path.display())
@@ -173,45 +145,63 @@ pub(super) fn create(
         .as_file_mut()
         .sync_all()
         .with_context(|| format!("cannot sync `{}`", path.display()))?;
-    set_team_permissions(temporary.as_file(), args.team)?;
+    set_card_permissions(temporary.as_file(), args.team)?;
     temporary
         .persist_noclobber(&path)
         .map_err(|error| error.error)
         .with_context(|| format!("refusing to overwrite `{}`", path.display()))?;
     outputln!(
         "Saved {} card: {}",
-        if args.team { "team" } else { "private" },
+        if args.team {
+            "repository"
+        } else if args.global {
+            "user-global"
+        } else {
+            "clone-private"
+        },
         path.display()
     )?;
     Ok(ExitCode::SUCCESS)
 }
 
-fn prepare_directory(repository: &Repository, team: bool) -> Result<PathBuf> {
+fn prepare_directory(repository: Option<&Repository>, team: bool, global: bool) -> Result<PathBuf> {
+    if global {
+        let directory = user_cards_path()?;
+        let parent = directory.parent().context("user card path has no parent")?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("cannot create user data directory `{}`", parent.display()))?;
+        ensure_real_directory(&directory, true)?;
+        return Ok(directory);
+    }
+    let repository = repository.context("this card scope requires a Git worktree")?;
     if team {
-        ensure_real_directory(&repository.shared_cards)?;
+        ensure_real_directory(&repository.shared_cards, false)?;
         return Ok(repository.shared_cards.clone());
     }
     let private_parent = repository.common_dir.join("fixcard");
-    ensure_real_directory(&private_parent)?;
-    ensure_real_directory(&repository.private_cards)?;
+    ensure_real_directory(&private_parent, true)?;
+    ensure_real_directory(&repository.private_cards, true)?;
     Ok(repository.private_cards.clone())
 }
 
-fn ensure_real_directory(path: &Path) -> Result<()> {
+fn ensure_real_directory(path: &Path, private: bool) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(metadata) if metadata.file_type().is_dir() => set_directory_permissions(path, private),
         Ok(_) => bail!(
             "refusing unsafe card storage `{}`: expected a real directory, not a file or symlink",
             path.display()
         ),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir(path)
-            .with_context(|| format!("cannot create card directory `{}`", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(path)
+                .with_context(|| format!("cannot create card directory `{}`", path.display()))?;
+            set_directory_permissions(path, private)
+        }
         Err(error) => Err(error).with_context(|| format!("cannot inspect `{}`", path.display())),
     }
 }
 
 #[cfg(unix)]
-fn set_team_permissions(file: &File, team: bool) -> Result<()> {
+fn set_card_permissions(file: &File, team: bool) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mode = if team { 0o644 } else { 0o600 };
     file.set_permissions(fs::Permissions::from_mode(mode))
@@ -219,7 +209,20 @@ fn set_team_permissions(file: &File, team: bool) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn set_team_permissions(_file: &File, _team: bool) -> Result<()> {
+fn set_card_permissions(_file: &File, _team: bool) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_directory_permissions(path: &Path, private: bool) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if private { 0o700 } else { 0o755 };
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .with_context(|| format!("cannot set permissions on `{}`", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_directory_permissions(_path: &Path, _private: bool) -> Result<()> {
     Ok(())
 }
 
@@ -233,15 +236,6 @@ fn required(value: Option<String>, label: &str, interactive: bool) -> Result<Str
         bail!("{label} cannot be empty")
     }
     Ok(value.trim().to_owned())
-}
-
-fn optional(value: Option<String>, label: &str, interactive: bool) -> Result<Option<String>> {
-    let value = match value {
-        Some(value) => value,
-        None if interactive => prompt(label, "")?,
-        None => return Ok(None),
-    };
-    Ok((!value.trim().is_empty()).then(|| value.trim().to_owned()))
 }
 
 fn prompt(label: &str, default: &str) -> Result<String> {
@@ -377,15 +371,6 @@ fn slugify(value: &str) -> String {
         .collect::<String>()
         .trim_end_matches('-')
         .to_owned()
-}
-
-fn split_optional(value: &str) -> Vec<String> {
-    value
-        .split([',', ';'])
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
 }
 
 fn flag(label: &str) -> String {

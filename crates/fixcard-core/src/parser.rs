@@ -6,6 +6,10 @@ use crate::{Card, CardDocument, SUPPORTED_SCHEMA_VERSION};
 
 /// Maximum accepted card size. Large logs do not belong in cards.
 pub const MAX_CARD_BYTES: usize = 256 * 1024;
+const MAX_ANCHORS_PER_CARD: usize = 64;
+const MAX_ANCHOR_CHARS: usize = 1_024;
+const MAX_EXTENSION_DEPTH: usize = 8;
+const MAX_EXTENSION_NODES: usize = 1_024;
 
 static ID: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
@@ -189,6 +193,26 @@ fn validate(card: &Card, body: &str) -> Result<(), ParseError> {
             "at least one non-empty exact or contains anchor is required".to_owned(),
         ));
     }
+    let anchors = card
+        .match_spec
+        .exact
+        .iter()
+        .chain(&card.match_spec.contains)
+        .chain(&card.match_spec.not_contains)
+        .collect::<Vec<_>>();
+    if anchors.len() > MAX_ANCHORS_PER_CARD {
+        return Err(ParseError::Invalid(format!(
+            "a card may contain at most {MAX_ANCHORS_PER_CARD} match anchors"
+        )));
+    }
+    if anchors
+        .iter()
+        .any(|anchor| anchor.chars().count() > MAX_ANCHOR_CHARS)
+    {
+        return Err(ParseError::Invalid(format!(
+            "each match anchor may contain at most {MAX_ANCHOR_CHARS} characters"
+        )));
+    }
     if card.created.is_none() && card.last_verified.is_none() {
         return Err(ParseError::Invalid(
             "created or last_verified is required".to_owned(),
@@ -216,10 +240,47 @@ fn validate(card: &Card, body: &str) -> Result<(), ParseError> {
             "unknown fields must use the `x-` extension prefix".to_owned(),
         ));
     }
+    let mut extension_nodes = 0_usize;
+    for value in card.extensions.values() {
+        validate_extension_value(value, 1, &mut extension_nodes)?;
+    }
     if !has_non_empty_section(body, "What worked here") {
         return Err(ParseError::Invalid(
             "Markdown body requires a non-empty `## What worked here` section".to_owned(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_extension_value(
+    value: &serde_yaml_ng::Value,
+    depth: usize,
+    nodes: &mut usize,
+) -> Result<(), ParseError> {
+    *nodes = nodes.saturating_add(1);
+    if depth > MAX_EXTENSION_DEPTH || *nodes > MAX_EXTENSION_NODES {
+        return Err(ParseError::Invalid(format!(
+            "extension data exceeds the depth ({MAX_EXTENSION_DEPTH}) or node ({MAX_EXTENSION_NODES}) limit"
+        )));
+    }
+    match value {
+        serde_yaml_ng::Value::Sequence(values) => {
+            for child in values {
+                validate_extension_value(child, depth + 1, nodes)?;
+            }
+        }
+        serde_yaml_ng::Value::Mapping(values) => {
+            for (key, child) in values {
+                validate_extension_value(key, depth + 1, nodes)?;
+                validate_extension_value(child, depth + 1, nodes)?;
+            }
+        }
+        serde_yaml_ng::Value::Tagged(_) => {
+            return Err(ParseError::Invalid(
+                "custom YAML tags are not supported in extensions".to_owned(),
+            ));
+        }
+        _ => {}
     }
     Ok(())
 }

@@ -116,13 +116,15 @@ pub struct Verification {
     pub source_commit: Option<String>,
 }
 
-/// Whether a card is private to the local repository clone or Git-reviewed.
+/// Where a card is stored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CardOrigin {
     /// Stored under Git's common directory.
     Private,
     /// Stored in the repository's `.fixcards` directory.
     Shared,
+    /// Stored in the operating system's per-user application-data directory.
+    User,
 }
 
 /// A document with its local source information.
@@ -132,6 +134,8 @@ pub struct LoadedCard {
     pub document: CardDocument,
     /// File from which it was parsed.
     pub path: PathBuf,
-    /// Private or repository-reviewed origin.
+    /// Private or repository origin.
     pub origin: CardOrigin,
+    /// Whether the displayed bytes exactly match a tracked, committed card.
+    pub committed: bool,
 }
