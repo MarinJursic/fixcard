@@ -143,6 +143,48 @@ impl Repository {
         Ok(cards)
     }
 
+    /// Return the current commit object ID, or `None` before the first commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GitError`] when Git cannot be invoked or returns invalid UTF-8.
+    pub fn head_commit(&self) -> Result<Option<String>, GitError> {
+        let output = git_output(
+            &self.root,
+            [
+                OsStr::new("rev-parse"),
+                OsStr::new("--verify"),
+                OsStr::new("HEAD"),
+            ],
+        )?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        let value = String::from_utf8(output.stdout).map_err(|_| GitError::Utf8)?;
+        Ok(Some(value.trim().to_owned()))
+    }
+
+    /// Return the repository-local Git author name when configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GitError`] when Git cannot be invoked or returns invalid UTF-8.
+    pub fn author_name(&self) -> Result<Option<String>, GitError> {
+        let output = git_output(
+            &self.root,
+            [
+                OsStr::new("config"),
+                OsStr::new("--get"),
+                OsStr::new("user.name"),
+            ],
+        )?;
+        if !output.status.success() || output.stdout.is_empty() {
+            return Ok(None);
+        }
+        let value = String::from_utf8(output.stdout).map_err(|_| GitError::Utf8)?;
+        Ok(Some(value.trim().to_owned()))
+    }
+
     /// Read Git's last-touch provenance for a shared card.
     ///
     /// Uncommitted cards return `Ok(None)`.

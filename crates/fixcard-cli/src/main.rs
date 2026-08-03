@@ -1,5 +1,7 @@
 //! Fixcard command-line entry point.
 
+mod create;
+
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -74,6 +76,39 @@ struct NewArgs {
     /// Save to `.fixcards/` for Git review instead of private clone storage.
     #[arg(long)]
     team: bool,
+    /// Stable lowercase ID; prompted when omitted in a terminal.
+    #[arg(long)]
+    id: Option<String>,
+    /// Short resolution title; prompted when omitted in a terminal.
+    #[arg(long)]
+    title: Option<String>,
+    /// Stable exact failure anchor; repeatable.
+    #[arg(long = "exact")]
+    exact: Vec<String>,
+    /// Additional literal failure fragment; repeatable.
+    #[arg(long = "contains")]
+    contains: Vec<String>,
+    /// Explanation of the failure's cause.
+    #[arg(long)]
+    why: Option<String>,
+    /// Human-confirmed resolution text.
+    #[arg(long)]
+    resolution: Option<String>,
+    /// Inert command to display for review; repeatable.
+    #[arg(long = "command")]
+    commands: Vec<String>,
+    /// Command whose observed result validated the resolution.
+    #[arg(long)]
+    validation_command: Option<String>,
+    /// Observed exit status for the validation command.
+    #[arg(long, requires = "validation_command")]
+    validation_exit: Option<i32>,
+    /// Declared risk: low, medium, or high.
+    #[arg(long, default_value = "low")]
+    risk: String,
+    /// Accept the rendered preview without an interactive confirmation.
+    #[arg(long, short = 'y')]
+    yes: bool,
 }
 
 fn main() -> ExitCode {
@@ -94,10 +129,7 @@ fn run() -> Result<ExitCode> {
     match cli.command.unwrap_or(Command::Find(FindArgs::default())) {
         Command::Find(args) => find(&repository, &args),
         Command::Show { id } => show(&repository, &id),
-        Command::New(args) => {
-            let destination = if args.team { "team" } else { "private" };
-            bail!("{destination} card creation is not available in this development milestone")
-        }
+        Command::New(args) => create::create(&repository, &args),
         Command::Lint { path } => lint(&repository, path.as_deref()),
     }
 }

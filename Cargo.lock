@@ -283,6 +283,7 @@ dependencies = [
  "jiff",
  "predicates",
  "semver",
+ "serde_yaml_ng",
  "tempfile",
 ]
 
