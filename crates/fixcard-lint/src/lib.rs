@@ -237,15 +237,15 @@ fn lint_lifecycle(document: &CardDocument, today: Option<Date>, diagnostics: &mu
             line: None,
         });
     }
-    if let (Some(today), Some(last_verified)) = (today, document.card.last_verified)
-        && approximate_days(today) - approximate_days(last_verified) > 365
-    {
-        diagnostics.push(Diagnostic {
-            code: "stale",
-            severity: Severity::Warning,
-            message: format!("last verification on {last_verified} is more than 365 days old"),
-            line: None,
-        });
+    if let (Some(today), Some(last_verified)) = (today, document.card.last_verified) {
+        if approximate_days(today) - approximate_days(last_verified) > 365 {
+            diagnostics.push(Diagnostic {
+                code: "stale",
+                severity: Severity::Warning,
+                message: format!("last verification on {last_verified} is more than 365 days old"),
+                line: None,
+            });
+        }
     }
 }
 

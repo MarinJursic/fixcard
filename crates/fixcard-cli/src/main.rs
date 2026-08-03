@@ -310,13 +310,13 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
             println!("  source commit: {}", sanitize_terminal(commit));
         }
     }
-    if card.origin == CardOrigin::Shared
-        && let Some(provenance) = repository.provenance(&card.path)?
-    {
-        println!("\nGit provenance");
-        println!("  commit: {}", provenance.commit);
-        println!("  author: {}", sanitize_terminal(&provenance.author));
-        println!("  authored: {}", provenance.authored_at);
+    if card.origin == CardOrigin::Shared {
+        if let Some(provenance) = repository.provenance(&card.path)? {
+            println!("\nGit provenance");
+            println!("  commit: {}", provenance.commit);
+            println!("  author: {}", sanitize_terminal(&provenance.author));
+            println!("  authored: {}", provenance.authored_at);
+        }
     }
     println!(
         "\nThis is evidence of a previous resolution, not a guarantee. Review commands before running them."
