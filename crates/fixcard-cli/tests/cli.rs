@@ -296,6 +296,20 @@ fn reports_no_cards_outside_a_repository() {
 }
 
 #[test]
+fn status_is_actionable_outside_git() {
+    let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repository: not detected"))
+        .stdout(predicate::str::contains("fixcard run --"));
+}
+
+#[test]
 fn saves_and_finds_a_user_global_card_outside_git() {
     let directory = TempDir::new().expect("create non-repository directory");
     let data = TempDir::new().expect("create isolated data directory");

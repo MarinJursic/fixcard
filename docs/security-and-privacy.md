@@ -16,23 +16,45 @@ card can publish its contents according to the repository's remotes.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.
+- User-global cards are plain files in the operating system's per-user
+  application-data directory.
+- `run --` retains at most 512 KiB from each output stream in memory and does
+  not persist the captured failure.
 - There is no database or cache in v1.
 
 ## What Fixcard can execute
 
 Fixcard invokes Git with fixed, non-interactive arguments to discover repository
-metadata. It does not invoke a shell and never executes commands from a card.
-Code fences and validation commands are inert text.
+metadata. `run --` directly executes only the program and argument boundaries
+supplied by the user. It does not invoke a shell and never executes commands
+from a card. Code fences, `verified.command`, and extension data are inert text.
+Windows `.bat` and `.cmd` programs are refused because Windows interprets them
+through a command shell.
 
 ## Untrusted input controls
 
-- card and query sizes/counts are bounded;
-- card-directory symlinks are rejected or ignored;
+- per-card, aggregate-source, card-count, directory-entry, query, anchor,
+  extension-depth, extension-node, and diagnostic work are bounded;
+- card-directory symlinks are rejected and symlinked card files are ignored;
 - IDs cannot traverse paths;
 - ambiguous YAML and unsupported schema versions fail closed;
 - terminal escape and unsafe control characters are stripped before display;
 - semantic-version conflicts and negative conditions lower trust rather than
   being hidden by textual similarity.
+- malformed cards are quarantined during lookup with prominent bounded
+  diagnostics; strict `lint` still fails.
+
+## Provenance is descriptive, not authorization
+
+`repository-committed` means the exact bytes parsed and displayed equal the
+card blob at `HEAD`. It does not prove human review, a trusted Git author, a
+trusted branch, or a trusted remote. `repository-working-copy`, `private`, and
+`user-global` likewise describe source state only. No provenance label, author,
+risk field, or validation field authorizes execution.
+
+Duplicate IDs across scopes are independent and can be addressed with `repo:`,
+`private:`, and `global:` prefixes. A repository card cannot suppress a
+user-global card merely by declaring the same ID.
 
 ## Secret scanning limits
 

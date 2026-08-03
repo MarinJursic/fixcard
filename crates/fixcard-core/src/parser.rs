@@ -330,6 +330,27 @@ Run the repository generator and review its diff.
     }
 
     #[test]
+    fn parses_every_published_alpha_card_variant() {
+        let published = include_str!("../../../fixtures/cards/pnpm-outdated-lockfile.md");
+        for release in ["v0.1.0-alpha.1", "v0.1.0-alpha.2"] {
+            assert!(
+                parse_card(published).is_ok(),
+                "published compatibility fixture from {release} must remain readable"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_excessive_anchor_work() {
+        let anchors = (0..=MAX_ANCHORS_PER_CARD)
+            .map(|index| format!("A{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let input = VALID.replace("exact: [E_GENERATED_STALE]", &format!("exact: [{anchors}]"));
+        assert!(parse_card(&input).is_err());
+    }
+
+    #[test]
     fn rejects_unknown_unprefixed_fields() {
         let input = VALID.replace("x-owner", "owner");
         assert!(parse_card(&input).is_err());

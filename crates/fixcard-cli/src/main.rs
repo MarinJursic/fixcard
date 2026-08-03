@@ -46,8 +46,8 @@ const POLICY_FILE: &str = ".fixcard.toml";
 #[command(
     name = "fixcard",
     version,
-    about = "Find the fix this repository already proved",
-    long_about = "Local, Git-aware lookup for repository-owned, human-verified troubleshooting cards. Commands are displayed, never executed."
+    about = "Recall a proven development fix without executing it",
+    long_about = "Local lookup for repository, clone-private, and user-global troubleshooting cards. Card content is displayed, never executed."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -65,6 +65,10 @@ enum Command {
         /// Stable card ID.
         id: String,
     },
+    /// List available cards with stable scoped references.
+    List,
+    /// Show active storage paths, counts, and repository state.
+    Status,
     /// Create a private card, or explicitly create a repository card.
     New(Box<NewArgs>),
     /// Save a known resolution as a private, repository, or user-global card.
@@ -84,7 +88,7 @@ enum Command {
 
 #[derive(Clone, Debug, Default, Args)]
 struct FindArgs {
-    /// Failure text. When omitted, read standard input or interactive paste mode.
+    /// Failure text. When omitted, read standard input.
     #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
     query: Vec<String>,
     /// Include weak candidates and their caution states.
@@ -107,7 +111,7 @@ struct FindArgs {
     reason = "independent opt-in CLI switches are clearer than artificial enum state"
 )]
 struct NewArgs {
-    /// Save to `.fixcards/` for Git review instead of private clone storage.
+    /// Save to `.fixcards/` for repository review instead of clone-private storage.
     #[arg(long)]
     team: bool,
     /// Save for reuse across all repositories in the per-user data directory.
@@ -217,9 +221,14 @@ fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     let current = env::current_dir().context("cannot determine current directory")?;
     let repository = Repository::discover(&current).ok();
+    if cli.command.is_none() && io::stdin().is_terminal() {
+        return status(repository.as_ref());
+    }
     match cli.command.unwrap_or(Command::Fix(FindArgs::default())) {
         Command::Fix(args) | Command::Find(args) => find(repository.as_ref(), &args),
         Command::Show { id } => show(repository.as_ref(), &id),
+        Command::List => list(repository.as_ref()),
+        Command::Status => status(repository.as_ref()),
         Command::New(args) | Command::Save(args) => {
             if !args.global && repository.is_none() {
                 bail!("private and team cards require a Git worktree; use --global outside Git")
@@ -236,6 +245,61 @@ fn run() -> Result<ExitCode> {
             lint(repository, path.as_deref(), &policy)
         }
     }
+}
+
+fn list(repository: Option<&Repository>) -> Result<ExitCode> {
+    let mut cards = load_available_cards(repository)?;
+    cards.sort_by(|left, right| {
+        origin_order(left.origin)
+            .cmp(&origin_order(right.origin))
+            .then_with(|| left.document.card.id.cmp(&right.document.card.id))
+    });
+    if cards.is_empty() {
+        outputln!("No Fixcards are available.")?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    for card in cards {
+        outputln!(
+            "{}:{}\t{}",
+            scope_prefix(card.origin),
+            render_untrusted(&card.document.card.id),
+            render_untrusted(&card.document.card.title)
+        )?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn status(repository: Option<&Repository>) -> Result<ExitCode> {
+    let cards = load_available_cards(repository)?;
+    outputln!("Fixcard {}", env!("CARGO_PKG_VERSION"))?;
+    if let Some(repository) = repository {
+        outputln!("Repository: {}", repository.root.display())?;
+        outputln!("  repository cards: {}", repository.shared_cards.display())?;
+        outputln!(
+            "  clone-private cards: {}",
+            repository.private_cards.display()
+        )?;
+    } else {
+        outputln!("Repository: not detected (user-global cards remain available)")?;
+    }
+    outputln!("User-global cards: {}", user_cards_path()?.display())?;
+    outputln!(
+        "Available: {} repository · {} private · {} global",
+        cards
+            .iter()
+            .filter(|card| card.origin == CardOrigin::Shared)
+            .count(),
+        cards
+            .iter()
+            .filter(|card| card.origin == CardOrigin::Private)
+            .count(),
+        cards
+            .iter()
+            .filter(|card| card.origin == CardOrigin::User)
+            .count()
+    )?;
+    outputln!("Try: fixcard run -- PROGRAM [ARGS...] or fixcard fix ERROR_TEXT")?;
+    Ok(ExitCode::SUCCESS)
 }
 
 #[allow(
@@ -537,6 +601,7 @@ fn print_card(repository: Option<&Repository>, card: &LoadedCard) -> Result<()> 
         )?;
     }
 
+    outputln!("\nSuggested resolution — not executed")?;
     outputln!("\n{}", render_untrusted(card.document.body.trim()))?;
     if let Some(verification) = &metadata.verified {
         outputln!("\nValidation recorded")?;
@@ -785,6 +850,22 @@ const fn trust_label(card: &LoadedCard) -> &'static str {
         (CardOrigin::Shared, true) => "repository-committed",
         (CardOrigin::Shared, false) => "repository-working-copy",
         (CardOrigin::User, _) => "user-global",
+    }
+}
+
+const fn scope_prefix(origin: CardOrigin) -> &'static str {
+    match origin {
+        CardOrigin::Shared => "repo",
+        CardOrigin::Private => "private",
+        CardOrigin::User => "global",
+    }
+}
+
+const fn origin_order(origin: CardOrigin) -> u8 {
+    match origin {
+        CardOrigin::Shared => 0,
+        CardOrigin::Private => 1,
+        CardOrigin::User => 2,
     }
 }
 

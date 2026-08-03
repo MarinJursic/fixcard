@@ -10,9 +10,12 @@
 - [x] 1,000-card performance gate
 - [x] cross-platform CI and security automation proven green
 - [x] complete user and authoring documentation
-- [x] signed/provenance-attested prerelease artifacts with checksums and SBOM
+- [x] provenance-attested prerelease artifacts with checksums and SBOM
 
 ## Validation before 1.0
+
+The production-v1 implementation is available as `1.0.0-rc.1`. Stable release
+promotion remains intentionally blocked on evidence rather than code volume:
 
 - conduct the diary study and concierge test described in the research memo;
 - dogfood in 5–8 active repositories for four weeks;

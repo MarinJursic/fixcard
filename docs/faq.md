@@ -2,8 +2,9 @@
 
 ## Does Fixcard diagnose new errors?
 
-No. It retrieves a resolution a human already recorded for this repository. No
-strong match is a valid and expected result.
+No. It retrieves a resolution a human already recorded for the current
+repository, clone, or user-global collection. No strong match is a valid and
+expected result.
 
 ## Does it run the suggested command?
 
@@ -34,8 +35,8 @@ clone share them. Shared cards follow the checked-out branch like other files.
 
 ## Can two cards have the same ID?
 
-No. IDs must be unique across private and shared storage. `show` and provenance
-need an unambiguous identity.
+IDs must be unique within one origin. The same ID may exist in another scope;
+use `repo:id`, `private:id`, or `global:id` with `show` when it is ambiguous.
 
 ## Why is a plausible result marked weak?
 
@@ -45,12 +46,13 @@ candidate weak. Use `--explain --all` to inspect why.
 
 ## Is the format stable?
 
-The v1 document is an implementation draft. Backward-compatibility guarantees
-begin at the first tagged 1.0 specification release. Plain Markdown remains
-readable regardless.
+Yes. The v1 data model, extension rule, and inert-command semantics are frozen
+separately from the CLI release candidate. Incompatible meaning requires a
+future schema version. Plain Markdown remains readable regardless.
 
 ## Why not share a global card marketplace?
 
-Repository specificity is the safety boundary and the product value. A global
-fix corpus would recreate generic search results with weaker provenance and
-more opportunities for malicious instructions.
+Fixcard supports a local user-global scope for personal knowledge. It does not
+provide a network registry or marketplace. A public universal corpus would
+recreate generic search results with weaker context and more opportunities for
+malicious instructions.

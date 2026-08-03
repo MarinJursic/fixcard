@@ -24,7 +24,7 @@ The ranker combines named contributions from:
 - OS, architecture, and supplied tool-version compatibility;
 - shared/private origin and card age.
 
-Run `fixcard find --explain ...` to see those contributions. Scores order
+Run `fixcard fix --explain ...` to see those contributions. Scores order
 candidates; confidence controls whether Fixcard presents one as a strong match.
 
 ## Hard caution states

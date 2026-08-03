@@ -5,153 +5,169 @@
 [![MSRV: 1.85](https://img.shields.io/badge/MSRV-1.85-DEA584.svg)](https://www.rust-lang.org/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Paste an error; get the fix this repository already proved.**
+**Run a command. If it fails, get the complete fix your team already proved.**
 
-Fixcard is a local, Git-aware command-line tool and an open Markdown format for
-repository-specific troubleshooting knowledge. It finds human-recorded fixes,
-shows exactly why one matched, and keeps the conditions, risk, validation, and
-provenance beside the resolution.
+Fixcard is a local command-line tool and open Markdown format for recurring
+development failures. It matches literal evidence, shows the whole recorded
+resolution immediately, and keeps applicability, risk, validation, and source
+provenance beside it.
 
-Fixcard does not generate advice, capture shell history, upload logs, call a
-model, run a daemon, or execute a card's commands.
+It never generates advice, uploads logs, runs a daemon, or executes text from a
+card. A match is a suggested resolution, not an automatic fix.
 
-> [!WARNING]
-> Fixcard is an **alpha**. Its safety and deterministic behavior are tested, but
-> real-world adoption and retrieval quality have not yet passed the published
-> [validation plan](docs/validation.md). A previous resolution is evidence, not
-> a guarantee.
+> [!IMPORTANT]
+> The production-v1 implementation is being validated as a release candidate.
+> Engineering checks are automated, but the published real-user validation
+> gates are not complete. See [Validation](docs/validation.md).
 
-## A two-minute example
+## The shortest path
 
-From anywhere inside a Git worktree:
-
-```console
-$ fixcard find ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile
-1 strong repository match
-
-pnpm-outdated-lockfile — Regenerate the lockfile with the pinned pnpm version
-confidence: strong · origin: shared · risk: low
-
-Run: fixcard show pnpm-outdated-lockfile
-```
-
-Inspect the complete, inert card:
+Wrap a command whose failure may already be known:
 
 ```console
-$ fixcard show pnpm-outdated-lockfile
+$ fixcard run -- pnpm install --frozen-lockfile
+...the command's normal output...
+ERR_PNPM_OUTDATED_LOCKFILE
+
+1 strong Fixcard match
+Matched: exact anchor `ERR_PNPM_OUTDATED_LOCKFILE`
+
+Regenerate the lockfile with the pinned pnpm version
+
+Card: pnpm-outdated-lockfile
+Trust
+  origin: repository-committed
+  risk: low risk
+
+## What worked here
+
+Use the repository's pinned pnpm version, regenerate the lockfile, and review
+the diff.
+
+This is evidence of a previous resolution, not a guarantee. Review commands
+before running them.
 ```
 
-After deliberately solving a new failure, preserve it privately:
+`run --` executes only the argv supplied after `--`, without a shell. It streams
+the child's stdout and stderr, retains a bounded in-memory tail, performs lookup
+after a failure, and returns the child's original exit code. Fixcard's result is
+written to stderr so the child's stdout stays pipeline-safe. Captured output is
+not persisted.
+
+Already have the error? One invocation is enough:
 
 ```console
-$ fixcard new
+fixcard fix ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile
+journalctl -u my-service --no-pager | fixcard fix
 ```
 
-When the card is general enough for teammates, create or move it to
-`.fixcards/`, lint it, and review it like code:
+A standalone process cannot portably recover output that was printed before it
+started. Fixcard therefore does not scrape terminal scrollback, read the
+clipboard, or silently rerun the previous command.
+
+## Save what worked
+
+The default interactive flow asks only for a title, stable failure excerpt, and
+resolution, then shows a preview:
 
 ```console
-$ fixcard new --team
-$ fixcard lint
+fixcard save                       # private to this clone
+fixcard save --team                # .fixcards/, for repository review
+fixcard save --global              # reusable in all repositories for this user
 ```
 
-See [Getting started](docs/getting-started.md) for a complete walkthrough and
-[`examples/repository`](examples/repository) for a small teaching repository.
+`fixcard new` remains an alias-compatible authoring command. Optional flags add
+negative conditions, tool ranges, explanation, validation evidence, or inert
+commands for humans to review.
+
+## Card scopes and precedence
+
+| Scope | Storage | Displayed origin |
+| --- | --- | --- |
+| Repository | `<worktree>/.fixcards/*.md` | `repository-committed` only when the parsed bytes exactly match `HEAD`; otherwise `repository-working-copy` |
+| Clone-private | `<git-common-dir>/fixcard/cards/*.md` | `private` |
+| User-global | OS application-data directory | `user-global` |
+
+Repository cards win deterministic tie-breaks over private and global cards.
+Duplicate IDs across scopes remain independent; address them as `repo:id`,
+`private:id`, or `global:id` with `fixcard show`.
+
+User-global cards are local files, not a public registry. They work outside Git
+repositories. On Linux Fixcard follows the XDG data-directory convention; on
+macOS it uses Application Support; on Windows it uses Local AppData. Set the
+absolute `FIXCARD_DATA_DIR` path to override the base directory.
 
 ## Install
 
-The current alpha can be built directly from the public repository:
+Release archives contain a single binary, license, changelog, and README for:
+
+- Linux x86-64 glibc and static musl;
+- Linux ARM64 glibc;
+- macOS Intel and Apple silicon;
+- Windows x86-64 MSVC.
+
+Each GitHub release includes SHA-256 checksums, a CycloneDX SBOM, and GitHub
+artifact attestations. See [Installation and verification](docs/installation.md)
+for exact download and verification steps. A source install requires Rust 1.85
+or newer:
 
 ```bash
-cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v0.1.0-alpha.2 --locked fixcard
+cargo install --git https://github.com/MarinJursic/fixcard --locked fixcard
 ```
-
-Rust 1.85 or newer is supported. The
-[current prerelease](https://github.com/MarinJursic/fixcard/releases/tag/v0.1.0-alpha.2)
-also provides cross-platform binaries, checksums, an SBOM, and GitHub artifact
-attestations.
-See [Installation and verification](docs/installation.md) for source builds,
-upgrades, and artifact verification.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `fixcard find [query]` | Search shared and private cards. Reads stdin when no query is supplied. |
-| `fixcard show <id>` | Show one complete card, provenance, and evidence notice. |
-| `fixcard new [--team]` | Create a reviewed private card, or explicitly create a shared card. |
-| `fixcard lint [path]` | Check schema, anchors, versions, secrets, risk, lifecycle, and staleness. |
+| `fixcard` / `fixcard fix [text]` | Show the complete strongest known resolution; reads piped stdin when text is omitted. |
+| `fixcard run -- PROGRAM [ARGS...]` | Run explicit argv, stream output, and look up a card after failure while preserving status. |
+| `fixcard save [--team\|--global]` | Record a resolution with a minimal reviewed preview. |
+| `fixcard show [scope:]id` | Display one complete inert card and available provenance. |
+| `fixcard list` | List available cards using stable scoped references. |
+| `fixcard status` | Show storage paths, repository detection, and card counts. |
+| `fixcard lint [path]` | Strictly validate schema, anchors, versions, secrets, risk, lifecycle, and staleness. |
+| `fixcard find [text]` | Compatibility name for direct lookup. |
+| `fixcard new [...]` | Compatibility name for authoring. |
 
-Useful lookup switches include `--explain`, `--all`,
-`--tool node=22.18.0`, and `--include-retired`. Run any command with `--help`
-for its exact interface.
+Lookup quarantines malformed cards with bounded diagnostics so one bad file
+cannot hide valid knowledge. `lint` remains strict and fails on bad input.
 
-## Why a repository boundary?
+## Safety contract
 
-A fix can be correct for one codebase and harmful in another. Fixcard only
-loads cards belonging to the current Git repository:
+- Card content, code fences, recorded validation commands, and extension fields
+  are always inert text.
+- Matching is local, deterministic, bounded, and explainable with `--explain`.
+- A negative condition or clear tool-version mismatch prevents a strong result.
+- Weak candidates are hidden unless `--all` is requested.
+- Terminal controls are neutralized and secret-like output is redacted before
+  display; redaction is defense in depth, not a promise that a log is harmless.
+- Card files, directory entries, aggregate bytes, anchors, YAML extensions, and
+  diagnostics have explicit resource limits.
+- Symlinked card directories and card files are not followed. Private Unix
+  directories are mode `0700` and files are mode `0600`.
+- `run --` is deliberately non-PTY capture. Programs may disable color or
+  prompts when stdout/stderr are pipes; invoke them directly when a TTY is
+  required.
 
-- shared cards: `<worktree>/.fixcards/*.md`, reviewed and versioned with code;
-- private cards: `<git-common-dir>/fixcard/cards/*.md`, local to the clone and
-  shared safely across linked worktrees.
+Read [Security and privacy](docs/security-and-privacy.md) and the formal
+[Threat model](docs/threat-model.md) before using cards from an untrusted
+checkout.
 
-There is no global corpus and no network lookup. The Markdown remains readable
-and useful if the binary disappears.
+## Open format, open project
 
-## Trust model
+Fixcards are ordinary Markdown with YAML front matter. They remain readable in
+code review and useful without this binary. The implementation and format are
+Apache-2.0 licensed; cards in another repository remain subject to that
+repository's license and contribution rules.
 
-- Matching is deterministic and can explain every scoring contribution.
-- A negative condition or clear version mismatch prevents a strong result.
-- Default lookup shows at most one strong match; weak candidates require
-  `--all`.
-- Commands are rendered as untrusted text and are never executed.
-- Terminal control bytes are neutralized before display.
-- Shared-card creation is explicit, previewed, and blocked on secret-like
-  findings; scanning remains defense in depth, not proof of safety.
-- Retired and superseded cards stay addressable but leave default search.
-
-Read the [security and privacy guide](docs/security-and-privacy.md), the formal
-[threat model](docs/threat-model.md), and the draft
-[v1 format specification](spec/fixcard-v1.md).
-
-## When Fixcard is—and is not—the right tool
-
-Use Fixcard when a recurring failure has a repository-specific resolution worth
-preserving with its conditions. Use shell-history tools for recalling commands,
-cheatsheets for general command discovery, runbooks for multi-step operations,
-and ordinary docs or a permanent code fix when the knowledge is broadly
-applicable. Repeated use of the same card is a signal to remove the underlying
-failure.
-
-The narrower product rationale and competitor boundaries are documented in
-[Research and positioning](docs/research-and-positioning.md).
-
-## Documentation
-
-- [Documentation index](docs/README.md)
 - [Getting started](docs/getting-started.md)
-- [Card authoring guide](docs/card-authoring.md)
+- [Card authoring](docs/card-authoring.md)
 - [Matching and confidence](docs/matching.md)
-- [Team workflow](docs/team-workflow.md)
 - [Examples](docs/examples.md)
-- [FAQ](docs/faq.md)
 - [Architecture](ARCHITECTURE.md)
 - [Contributing](CONTRIBUTING.md)
-- [Roadmap](ROADMAP.md)
+- [Support](SUPPORT.md)
 
-## Project status and name
-
-The four-command MVP is implemented and tested on Linux, macOS, Windows, and
-Rust 1.85. Performance gates cover a 1,000-card repository. Those engineering
-facts do not prove product adoption; the project will not claim otherwise.
-
-“Fixcard” remains a working name. A preliminary collision search found an
-unrelated aviation-recruiting service and no same-purpose developer tool, but
-this is not legal or trademark clearance. See [Name due diligence](docs/naming.md).
-
-## License
-
-The implementation and specification are licensed under Apache-2.0. Cards
-created in another repository remain subject to that repository's licensing,
-privacy, and contribution rules.
+Fixcard is intentionally a small, supportable tool: no cloud service, telemetry,
+public corpus, shell hook, PTY emulator, AI dependency, or automatic action
+runner. Repeated use of one card is a signal to remove the underlying failure.

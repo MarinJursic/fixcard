@@ -1,10 +1,42 @@
 # Changelog
 
 All notable changes are documented here. The project follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and will use semantic
-versioning after the first stable format release.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic
+versioning. The v1 format is stable; the CLI remains a release
+candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
+
+## [1.0.0-rc.1] - 2026-08-03
+
+### Release candidate additions
+
+- One-invocation `fix` output that includes the complete strongest resolution.
+- Explicit `run -- PROGRAM [ARGS...]` capture with direct argv execution,
+  bounded in-memory tails, streamed output, and child-status preservation.
+- User-global cards in standard OS application-data directories, including use
+  outside Git repositories.
+- Minimal three-prompt `save` flow and scoped `show` references.
+- Resilient lookup that quarantines malformed cards with bounded diagnostics.
+- Resource limits for directories, aggregate source, anchors, YAML extension
+  depth/nodes, lint input, captured output, and diagnostics.
+- Linux x86-64 musl release artifact and post-extraction artifact smoke tests.
+
+### Changed
+
+- Renamed the unsupported `repo-reviewed` claim to byte-verified
+  `repository-committed`; dirty or untracked cards are
+  `repository-working-copy`.
+- Stabilized the v1 format with explicit `x-` extension and permanently inert
+  command semantics.
+- Pinned every third-party GitHub Action to a full commit SHA.
+
+### Release candidate security
+
+- Reject symlinked card directories and restrict private Unix directory/file
+  modes to `0700`/`0600`.
+- Never persist captured command output and never execute card-derived text.
+- Refuse Windows batch programs in `run --` because they require a shell.
 
 ## [0.1.0-alpha.2] - 2026-08-03
 
@@ -37,5 +69,6 @@ versioning after the first stable format release.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
 [Unreleased]: https://github.com/MarinJursic/fixcard/commits/main
+[1.0.0-rc.1]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.2...v1.0.0-rc.1
 [0.1.0-alpha.2]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/MarinJursic/fixcard/compare/7685c83...v0.1.0-alpha.1
