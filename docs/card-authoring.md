@@ -40,7 +40,7 @@ provide known versions with repeatable `--tool NAME=VERSION` flags. A clear
 conflict prevents a strong result; missing environment data remains visible as
 unknown rather than being invented.
 
-`fixcard new` records the current OS and architecture by default. Use
+`fixcard save` records the current OS and architecture by default. Use
 `--no-platform` only when the resolution is genuinely platform-independent.
 
 ## Write the body for review
@@ -94,7 +94,7 @@ observed, omit `verified`; Fixcard will show an `unverified` note.
 Automation may create a draft without executing anything:
 
 ```bash
-fixcard new --team --yes \
+fixcard save --team --yes \
   --id pnpm-outdated-lockfile \
   --title "Regenerate the lockfile with the pinned pnpm version" \
   --exact ERR_PNPM_OUTDATED_LOCKFILE \
@@ -121,4 +121,4 @@ the preview; it does not bypass blocking safety findings.
 - treat repeated card use as evidence that the underlying product or build
   should be improved.
 
-The normative field table is in the [v1 format draft](../spec/fixcard-v1.md).
+The normative field table is in the [stable v1 format](../spec/fixcard-v1.md).

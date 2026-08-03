@@ -1,7 +1,8 @@
 # Team workflow
 
 Shared Fixcards are repository-owned documentation. They belong in ordinary
-code review, not in an unreviewed global knowledge base.
+code review. User-global storage is personal scope, not a replacement for
+repository review.
 
 Repositories with stricter command boundaries can commit a `.fixcard.toml`
 denylist described in the [security and privacy guide](security-and-privacy.md).
@@ -12,7 +13,7 @@ denylist described in the [security and privacy guide](security-and-privacy.md).
 2. Keep the first card private while removing machine-local details.
 3. Decide whether recurrence is likely enough to justify maintenance.
 4. Add conditions, negative cases, validation, date, and honest risk.
-5. Create with `fixcard new --team` or move the generalized file into
+5. Create with `fixcard save --team` or move the generalized file into
    `.fixcards/`.
 6. Run `fixcard lint .fixcards` and review the rendered Markdown.
 7. Submit it through the repository's normal pull-request process.

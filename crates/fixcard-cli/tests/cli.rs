@@ -101,8 +101,36 @@ fn finds_a_strong_direct_query() {
         .args(["find", "E_GENERATED_STALE", "generated-client"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("1 strong repository match"))
+        .stdout(predicate::str::contains("1 strong Fixcard match"))
         .stdout(predicate::str::contains("known-build"));
+}
+
+#[test]
+fn fix_renders_the_complete_resolution_in_one_invocation() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "E_GENERATED_STALE", "generated-client"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 strong Fixcard match"))
+        .stdout(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ))
+        .stdout(predicate::str::contains("Run: fixcard show").not());
+}
+
+#[test]
+fn bare_fixcard_uses_the_one_step_fix_flow() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .write_stdin("E_GENERATED_STALE generated-client")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ));
 }
 
 #[test]
@@ -115,6 +143,60 @@ fn reads_failure_from_standard_input() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Rebuild the generated client"));
+}
+
+#[test]
+fn lookup_quarantines_a_malformed_card_without_hiding_valid_cards() {
+    let repository = repository();
+    fs::write(
+        repository.path().join(".fixcards/broken.md"),
+        "not a Fixcard",
+    )
+    .expect("write malformed card");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "E_GENERATED_STALE", "generated-client"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ))
+        .stderr(predicate::str::contains("warning: skipped"))
+        .stderr(predicate::str::contains("broken.md"));
+}
+
+#[cfg(unix)]
+#[test]
+fn run_preserves_child_output_and_failure_status() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args([
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "printf child-output; printf 'E_GENERATED_STALE generated-client' >&2; exit 23",
+        ])
+        .assert()
+        .code(23)
+        .stdout(predicate::eq(b"child-output".as_slice()))
+        .stderr(predicate::str::contains("1 strong Fixcard match"))
+        .stderr(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ));
+}
+
+#[cfg(unix)]
+#[test]
+fn run_passes_shell_metacharacters_as_literal_arguments() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["run", "--", "printf", "%s", "$(not-run);*;$HOME"])
+        .assert()
+        .success()
+        .stdout(predicate::eq(b"$(not-run);*;$HOME".as_slice()));
 }
 
 #[test]
@@ -201,16 +283,65 @@ fn lint_reports_an_id_filename_mismatch() {
 }
 
 #[test]
-fn fails_clearly_outside_a_repository() {
+fn reports_no_cards_outside_a_repository() {
     let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
     cargo_bin_cmd!("fixcard")
         .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
         .args(["find", "failure"])
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains(
-            "Fixcard must run inside a Git worktree",
-        ));
+        .code(1)
+        .stdout(predicate::str::contains("No Fixcards are available"));
+}
+
+#[test]
+fn status_is_actionable_outside_git() {
+    let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repository: not detected"))
+        .stdout(predicate::str::contains("fixcard run --"));
+}
+
+#[test]
+fn saves_and_finds_a_user_global_card_outside_git() {
+    let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args([
+            "save",
+            "--global",
+            "--id",
+            "generated-stale",
+            "--title",
+            "Rebuild generated output",
+            "--exact",
+            "E_GENERATED_STALE",
+            "--resolution",
+            "Run the generator.",
+            "--yes",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Saved user-global card"));
+    assert!(data.path().join("cards/generated-stale.md").is_file());
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["fix", "E_GENERATED_STALE"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("origin: user-global"))
+        .stdout(predicate::str::contains("Run the generator."));
 }
 
 #[test]
@@ -221,7 +352,7 @@ fn creates_and_lints_a_team_card_non_interactively() {
         .args(creation_args())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Saved team card"));
+        .stdout(predicate::str::contains("Saved repository card"));
 
     let card = repository.path().join(".fixcards/generated-stale.md");
     let source = fs::read_to_string(&card).expect("read created team card");
@@ -299,7 +430,7 @@ fn private_creation_uses_the_git_common_directory() {
         .args(args)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Saved private card"));
+        .stdout(predicate::str::contains("Saved clone-private card"));
     assert!(
         repository
             .path()
@@ -307,6 +438,26 @@ fn private_creation_uses_the_git_common_directory() {
             .is_file()
     );
     assert!(!repository.path().join(".fixcards").exists());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let directory_mode = fs::metadata(repository.path().join(".git/fixcard/cards"))
+            .expect("private card directory metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        let file_mode = fs::metadata(
+            repository
+                .path()
+                .join(".git/fixcard/cards/generated-stale.md"),
+        )
+        .expect("private card metadata")
+        .permissions()
+        .mode()
+            & 0o777;
+        assert_eq!(directory_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
+    }
 }
 
 #[test]

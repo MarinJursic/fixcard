@@ -164,12 +164,12 @@ fn score_card<'a>(
         );
     }
 
-    if loaded.origin == CardOrigin::Shared {
+    if loaded.committed {
         add(
             &mut score,
             &mut evidence,
             3,
-            "repository-reviewed card".to_owned(),
+            "repository-committed card".to_owned(),
         );
     }
 
@@ -345,6 +345,7 @@ const fn origin_order(origin: CardOrigin) -> u8 {
     match origin {
         CardOrigin::Shared => 0,
         CardOrigin::Private => 1,
+        CardOrigin::User => 2,
     }
 }
 
@@ -395,6 +396,7 @@ Use pnpm 10 to regenerate pnpm-lock.yaml.
             document: parse_card(&input).unwrap_or_else(|error| panic!("fixture: {error}")),
             path: PathBuf::from("lockfile.md"),
             origin: CardOrigin::Shared,
+            committed: true,
         }
     }
 
@@ -413,6 +415,38 @@ Use pnpm 10 to regenerate pnpm-lock.yaml.
             &SearchOptions::default(),
         );
         assert_eq!(results[0].confidence, Confidence::Strong);
+    }
+
+    #[test]
+    fn only_committed_shared_content_receives_the_review_bonus() {
+        let mut card = loaded("");
+        card.committed = false;
+        let uncommitted = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE",
+            std::slice::from_ref(&card),
+            &Environment::default(),
+            &SearchOptions::default(),
+        );
+        assert!(
+            uncommitted[0]
+                .evidence
+                .iter()
+                .all(|item| item.reason != "repository-committed card")
+        );
+
+        card.committed = true;
+        let committed = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE",
+            std::slice::from_ref(&card),
+            &Environment::default(),
+            &SearchOptions::default(),
+        );
+        assert!(
+            committed[0]
+                .evidence
+                .iter()
+                .any(|item| item.reason == "repository-committed card")
+        );
     }
 
     #[test]

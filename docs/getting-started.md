@@ -1,90 +1,118 @@
 # Getting started
 
-This walkthrough uses a disposable or existing Git repository. Fixcard refuses
-to run outside a worktree because repository context is part of its safety
-boundary.
+Fixcard can recall repository, clone-private, and user-global knowledge. It also
+works outside Git when user-global cards are available.
 
-## 1. Confirm the repository has no cards
+## 1. Capture a failure safely
 
-```console
-$ fixcard find "an error from this repository"
-No Fixcards exist in this repository yet.
-```
-
-## 2. Solve a real failure deliberately
-
-Fixcard does not diagnose the first occurrence. Debug normally, understand what
-changed, and validate the outcome yourself. Preserve only the smallest durable
-explanation after you know what worked.
-
-## 3. Create a private card
+The most reliable workflow is to let Fixcard observe an explicit command:
 
 ```console
-$ fixcard new
+$ fixcard run -- pnpm install --frozen-lockfile
 ```
 
-The interactive flow asks for a title, a stable error excerpt, an explanation,
-the resolution, optional inert commands, and optional validation evidence. It
-renders the complete file, runs lint, and asks before writing it.
+Fixcard executes exactly the program and argv after `--`, without a shell. It
+streams both output channels, keeps only a bounded in-memory tail, and searches
+after a nonzero exit. The command's exit code remains the process exit code even
+when a card matches.
 
-Private is the default. The resulting file lives at:
+This mode uses pipes rather than a pseudo-terminal. A program may disable color
+or interactive prompts. Run TTY-dependent commands normally and pass their
+failure text to `fixcard fix` afterward.
 
-```text
-<git-common-dir>/fixcard/cards/<id>.md
-```
+## 2. Look up text you already have
 
-Git's common directory means all linked worktrees of the same clone see the
-private card, while another clone does not.
-
-## 4. Find it again
-
-Pass text as arguments:
+Pass stable error fragments as arguments:
 
 ```bash
-fixcard find "ERR_EXAMPLE" "stable diagnostic fragment"
+fixcard fix ERR_EXAMPLE "stable diagnostic fragment"
 ```
 
-Or pipe/paste the original failure:
+Or pipe existing output:
 
 ```bash
-some-command 2>&1 | fixcard find
+journalctl -u example --no-pager | fixcard fix
 ```
 
-Fixcard reads only the supplied text. It does not intercept the shell command,
-store the query, or make a network request.
+Avoid `some-command 2>&1 | fixcard fix` as a command wrapper: an ordinary shell
+pipeline can report Fixcard's status instead of the failing command's status.
+Use `fixcard run -- some-command` for that case.
 
-Use `--explain` to audit scoring and `--all` to inspect weak candidates:
+Fixcard reads only supplied text. It does not inspect clipboard contents,
+terminal scrollback, shell history, or arbitrary logs, and it never silently
+reruns a previous command.
 
-```bash
-fixcard find --explain --all "ERR_EXAMPLE"
-```
+## 3. Read the result before acting
 
-## 5. Inspect before acting
+A strong result includes the complete resolution in the same invocation. It
+also shows the origin, declared risk, applicability, evidence date, and recorded
+validation. Commands in cards are inert text.
+
+To inspect a card by ID later:
 
 ```bash
 fixcard show <card-id>
 ```
 
-Compare the recorded platform, tool versions, negative conditions, date, risk,
-and provenance with the current situation. Commands are text for review and
-copying; Fixcard never runs them.
-
-## 6. Share only when justified
-
-Create a shared card explicitly:
+If the same ID exists in multiple scopes, qualify it:
 
 ```bash
-fixcard new --team
+fixcard show repo:<card-id>
+fixcard show private:<card-id>
+fixcard show global:<card-id>
 ```
 
-Or manually generalize a private card into `.fixcards/<id>.md`. Remove local
-paths, internal identifiers, credentials, and details that are not stable. Then:
+Use `--explain` to audit deterministic score contributions and `--all` to see
+weak candidates:
 
 ```bash
+fixcard fix --explain --all ERR_EXAMPLE
+```
+
+## 4. Save a fix you proved
+
+After deliberately solving and validating a real failure:
+
+```console
+$ fixcard save
+Short title: Rebuild the generated client
+Stable excerpt from the failure: ERR_GENERATED_CLIENT_STALE
+What worked here: Run the pinned generator and review the generated diff.
+```
+
+The default is clone-private storage:
+
+```text
+<git-common-dir>/fixcard/cards/<id>.md
+```
+
+All linked worktrees of that clone see it, while another clone does not.
+
+For a personal fix useful across repositories:
+
+```bash
+fixcard save --global
+```
+
+For repository-owned knowledge that teammates should review with code:
+
+```bash
+fixcard save --team
 fixcard lint .fixcards
 git add .fixcards/<id>.md
 git commit
 ```
 
-The card should receive the same review as a script or operational document.
-See [Team workflow](team-workflow.md).
+Global scope is not a substitute for team scope. Use it for truly portable
+personal knowledge; use `.fixcards/` when repository conditions matter.
+
+## 5. Understand provenance labels
+
+- `repository-committed` means the exact parsed file bytes match the blob at
+  `HEAD`; it does not claim human review, a trusted author, or a trusted remote.
+- `repository-working-copy` means the repository file is new or differs from
+  `HEAD`.
+- `private` and `user-global` describe storage scope, not authorization.
+
+No label makes commands safe to execute automatically. Read
+[Security and privacy](security-and-privacy.md) for the complete contract.

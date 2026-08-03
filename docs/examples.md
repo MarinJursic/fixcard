@@ -24,6 +24,6 @@ contained demo, copy `examples/repository` to a temporary directory, run
 `git init` there, and execute the installed `fixcard` binary inside it:
 
 ```bash
-fixcard find --explain ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile
-fixcard find --explain "address already in use" "0.0.0.0:5432"
+fixcard fix --explain ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile
+fixcard fix --explain "address already in use" "0.0.0.0:5432"
 ```

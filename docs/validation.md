@@ -6,14 +6,24 @@ Fixcard separates engineering verification from product validation.
 
 - the parser rejects malformed, ambiguous, oversized, and unsupported cards;
 - repository discovery works from nested directories and linked worktrees;
+- user-global cards work inside or outside Git using standard OS data paths;
 - matching is deterministic, explainable, and honors hard conflicts;
+- `fix` renders the complete resolution in one invocation;
+- `run --` preserves argv boundaries, streams child output, keeps bounded
+  in-memory tails, places its recommendation on stderr, and preserves status;
 - shared creation is explicit, previewed, linted, and atomic;
-- card content is not executed and terminal controls are neutralized;
+- lookup quarantines malformed cards while strict lint still fails;
+- exact parsed bytes, rather than Git authorship, determine the
+  `repository-committed` label;
+- card content is not executed, symlinked card directories are rejected,
+  private Unix modes are restricted, and terminal controls are neutralized;
 - Linux, macOS, Windows, and Rust 1.85 builds are exercised in CI;
 - a 1,000-card benchmark is gated below the 100 ms p95 lookup target on the CI
   reference runner;
 - optimized process startup is gated below the 75 ms p95 target;
-- dependencies are locked, audited, policy-checked, and reviewed.
+- dependencies are locked, audited, policy-checked, and reviewed;
+- third-party CI actions are commit-pinned and release archives are extracted
+  and smoke-tested before publication.
 
 These are testable implementation claims. They do **not** establish that people
 will create cards or that strong matches are relevant in diverse repositories.
@@ -52,7 +62,7 @@ secret/risk findings. Publish only aggregated, anonymized results and methodolog
 
 ## Go/change/stop thresholds
 
-Proceed toward 1.0 only if:
+Promote the release candidate to stable 1.0 only if:
 
 - at least 75% of strong rank-one matches are judged relevant, targeting 85%;
 - median card creation is at most 20 seconds once the fix is known;

@@ -15,7 +15,7 @@ and retrieving it at recurrence.
 
 The central behavioral risk is capture friction. A technically excellent index
 has no value if a developer will not preserve the result after the incident.
-That is why the product has four commands, no new service destination, and a
+That is why the product has a small command surface, no new service destination, and a
 published [kill-criteria-based validation plan](validation.md).
 
 ## Adjacent tools and boundaries
@@ -31,15 +31,16 @@ published [kill-criteria-based validation plan](validation.md).
 Fixcard borrows the good properties of plain files, local-first tools, and
 reviewable knowledge. Its honest novelty claim is the combination of a Git
 repository boundary, failure-fingerprint lookup, conditions and hard negatives,
-private-first capture, visible trust state, and a deliberately non-executing
+private-first capture, an optional personal global scope, visible trust state, and a deliberately non-executing
 format—not the invention of searchable notes.
 
 ## Rejected scope
 
-The research rejected automatic shell capture, command correction, general
-runbooks, global fix sharing, CI log warehousing, agent memory, cloud sync, and
-automatic execution. Each either collides with mature tools, expands the trust
-surface, or moves away from the specific recurrence moment.
+The research rejected shell-history scraping, silent command reruns, command
+correction, general runbooks, public fix sharing, CI log warehousing, agent
+memory, cloud sync, and automatic execution. Explicit `run --` capture was kept
+because it is bounded, local, status-preserving, and honest about which output
+was observed.
 
 ## Evidence discipline
 

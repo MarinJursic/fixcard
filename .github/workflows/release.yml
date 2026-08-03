@@ -18,8 +18,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            executable: fixcard
+            format: tar
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
             executable: fixcard
             format: tar
           - os: ubuntu-24.04-arm
@@ -41,7 +45,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Check tag matches package version
         shell: bash
         run: |
@@ -50,6 +54,9 @@ jobs:
           test "$tag_version" = "$package_version"
       - name: Install target
         run: rustup target add ${{ matrix.target }}
+      - name: Install musl linker
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
       - name: Build locked release binary
         run: cargo build --release --locked -p fixcard --target ${{ matrix.target }}
       - name: Smoke-test native binary
@@ -76,7 +83,24 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable }}" "staging/$package/"
           Copy-Item README.md, LICENSE, CHANGELOG.md "staging/$package/"
           Compress-Archive -Path "staging/$package" -DestinationPath "dist/$package.zip"
-      - uses: actions/upload-artifact@v7
+      - name: Smoke-test packaged Unix archive
+        if: matrix.format == 'tar'
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          package="fixcard-${version}-${{ matrix.target }}"
+          mkdir smoke
+          tar -xzf "dist/${package}.tar.gz" -C smoke
+          "smoke/${package}/${{ matrix.executable }}" --version
+      - name: Smoke-test packaged Windows archive
+        if: matrix.format == 'zip'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $package = "fixcard-$version-${{ matrix.target }}"
+          Expand-Archive "dist/$package.zip" -DestinationPath smoke
+          & "smoke/$package/${{ matrix.executable }}" --version
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-${{ matrix.target }}
           path: dist/*
@@ -87,14 +111,15 @@ jobs:
     name: Attest and publish
     needs: build
     runs-on: ubuntu-24.04
+    environment: release
     timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-*
           path: dist
@@ -114,11 +139,11 @@ jobs:
         working-directory: dist
         run: sha256sum fixcard-*.tar.gz fixcard-*.zip > SHA256SUMS
       - name: Attest build provenance
-        uses: actions/attest@v4
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
         with:
           subject-checksums: dist/SHA256SUMS
       - name: Attest SBOM for release archives
-        uses: actions/attest@v4
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
         with:
           subject-checksums: dist/SHA256SUMS
           sbom-path: dist/fixcard.cdx.json

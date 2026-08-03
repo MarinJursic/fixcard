@@ -25,7 +25,7 @@
 - [Development guide](development.md)
 - [Release guide](releasing.md)
 - [Architecture](../ARCHITECTURE.md)
-- [Format v1 draft](../spec/fixcard-v1.md)
+- [Stable format v1](../spec/fixcard-v1.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Security policy](../SECURITY.md)
 - [Governance](../GOVERNANCE.md)

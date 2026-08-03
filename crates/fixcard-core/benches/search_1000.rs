@@ -58,6 +58,7 @@ fn corpus() -> Vec<LoadedCard> {
                 document,
                 path: PathBuf::from(format!("{id}.md")),
                 origin: CardOrigin::Shared,
+                committed: true,
             }
         })
         .collect()
