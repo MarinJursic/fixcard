@@ -63,7 +63,8 @@ See [Getting started](docs/getting-started.md) for a complete walkthrough and
 The current alpha can be built directly from the public repository:
 
 ```bash
-cargo install --git https://github.com/MarinJursic/fixcard --locked fixcard
+cargo install --git https://github.com/MarinJursic/fixcard \
+  --tag v0.1.0-alpha.1 --locked fixcard
 ```
 
 Rust 1.85 or newer is supported. Tagged prereleases will also provide
