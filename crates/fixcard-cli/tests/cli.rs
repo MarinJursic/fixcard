@@ -8,6 +8,7 @@
 )]
 
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use assert_cmd::cargo::cargo_bin_cmd;
@@ -40,10 +41,55 @@ fn repository() -> TempDir {
         .status()
         .expect("run git init");
     assert!(status.success());
+    git(temp.path(), &["config", "user.name", "Fixcard Test"]);
+    git(
+        temp.path(),
+        &["config", "user.email", "fixcard@example.invalid"],
+    );
     let cards = temp.path().join(".fixcards");
     fs::create_dir(&cards).expect("create card directory");
     fs::write(cards.join("known-build.md"), CARD).expect("write card");
     temp
+}
+
+fn empty_repository() -> TempDir {
+    let temp = TempDir::new().expect("create temp repository");
+    git(temp.path(), &["init", "-q"]);
+    git(temp.path(), &["config", "user.name", "Fixcard Test"]);
+    git(
+        temp.path(),
+        &["config", "user.email", "fixcard@example.invalid"],
+    );
+    temp
+}
+
+fn git(directory: &Path, args: &[&str]) {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(directory)
+        .status()
+        .expect("run Git");
+    assert!(status.success(), "Git command failed: {args:?}");
+}
+
+fn creation_args() -> [&'static str; 15] {
+    [
+        "new",
+        "--id",
+        "generated-stale",
+        "--title",
+        "Rebuild the generated client",
+        "--exact",
+        "E_GENERATED_STALE",
+        "--resolution",
+        "Run the generator and review its diff.",
+        "--validation-command",
+        "cargo test",
+        "--validation-exit",
+        "0",
+        "--yes",
+        "--team",
+    ]
 }
 
 #[test]
@@ -95,4 +141,156 @@ fn fails_clearly_outside_a_repository() {
         .stderr(predicate::str::contains(
             "Fixcard must run inside a Git worktree",
         ));
+}
+
+#[test]
+fn creates_and_lints_a_team_card_non_interactively() {
+    let repository = empty_repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(creation_args())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Saved team card"));
+
+    let card = repository.path().join(".fixcards/generated-stale.md");
+    let source = fs::read_to_string(&card).expect("read created team card");
+    assert!(source.contains("last_verified:"));
+    assert!(source.contains("authors:\n- Fixcard Test"));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["lint", card.to_str().expect("UTF-8 path")])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 error(s)"));
+}
+
+#[test]
+fn private_creation_uses_the_git_common_directory() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.retain(|argument| *argument != "--team");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Saved private card"));
+    assert!(
+        repository
+            .path()
+            .join(".git/fixcard/cards/generated-stale.md")
+            .is_file()
+    );
+    assert!(!repository.path().join(".fixcards").exists());
+}
+
+#[test]
+fn refuses_to_overwrite_an_existing_card() {
+    let repository = empty_repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(creation_args())
+        .assert()
+        .success();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(creation_args())
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("refusing to overwrite"));
+}
+
+#[test]
+fn blocks_a_secret_from_a_team_card() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.extend([
+        "--command",
+        "export TOKEN=ghp_1234567890abcdefghijklmnopqrst",
+    ]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("blocking errors"));
+    assert!(
+        !repository
+            .path()
+            .join(".fixcards/generated-stale.md")
+            .exists()
+    );
+}
+
+#[test]
+fn blocks_understated_dangerous_commands_but_allows_declared_high_risk() {
+    let repository = empty_repository();
+    let mut low_risk = creation_args().to_vec();
+    low_risk.extend(["--command", "sudo rm -rf /var/example"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(&low_risk)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("blocking errors"));
+
+    low_risk.extend(["--risk", "high"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(low_risk)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("high-risk-command"));
+}
+
+#[test]
+fn private_cards_created_in_a_linked_worktree_use_the_common_git_directory() {
+    let repository = empty_repository();
+    fs::write(repository.path().join("README.md"), "worktree fixture").expect("write fixture");
+    git(repository.path(), &["add", "README.md"]);
+    git(repository.path(), &["commit", "-q", "-m", "fixture"]);
+    let worktree = repository.path().join("linked-worktree");
+    git(
+        repository.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "test-worktree",
+            worktree.to_str().expect("UTF-8 path"),
+        ],
+    );
+    let mut args = creation_args().to_vec();
+    args.retain(|argument| *argument != "--team");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(&worktree)
+        .args(args)
+        .assert()
+        .success();
+    assert!(
+        repository
+            .path()
+            .join(".git/fixcard/cards/generated-stale.md")
+            .is_file()
+    );
+    assert!(!worktree.join(".git/fixcard").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn refuses_a_symlinked_team_card_directory() {
+    use std::os::unix::fs::symlink;
+
+    let repository = empty_repository();
+    let outside = TempDir::new().expect("create outside directory");
+    symlink(outside.path(), repository.path().join(".fixcards")).expect("create symlink");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(creation_args())
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("refusing unsafe card storage"));
+    assert!(!outside.path().join("generated-stale.md").exists());
 }

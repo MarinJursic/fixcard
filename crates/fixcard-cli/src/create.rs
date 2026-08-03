@@ -1,8 +1,9 @@
 //! Reviewed private and team card creation.
 
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File};
 use std::io::{IsTerminal, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -65,6 +66,7 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         exit_code: args.validation_exit,
         source_commit,
     });
+    let last_verified = verification.as_ref().map(|_| today);
     let authors = repository.author_name()?.into_iter().collect();
     let card = Card {
         fixcard: fixcard_core::SUPPORTED_SCHEMA_VERSION,
@@ -82,7 +84,7 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         },
         risk,
         verified: verification,
-        last_verified: None,
+        last_verified,
         created: Some(today),
         authors,
         supersedes: Vec::new(),
@@ -112,29 +114,72 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
             return Ok(ExitCode::from(1));
         }
     }
-    let directory = if args.team {
-        &repository.shared_cards
-    } else {
-        &repository.private_cards
-    };
-    fs::create_dir_all(directory)
-        .with_context(|| format!("cannot create `{}`", directory.display()))?;
+    let directory = prepare_directory(repository, args.team)?;
     let path = directory.join(format!("{}.md", document.card.id));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .with_context(|| format!("refusing to overwrite `{}`", path.display()))?;
-    file.write_all(source.as_bytes())
+    if fs::symlink_metadata(&path).is_ok() {
+        bail!("refusing to overwrite `{}`", path.display())
+    }
+    let mut temporary = tempfile::NamedTempFile::new_in(&directory).with_context(|| {
+        format!(
+            "cannot create a temporary card in `{}`",
+            directory.display()
+        )
+    })?;
+    temporary
+        .write_all(source.as_bytes())
         .with_context(|| format!("cannot write `{}`", path.display()))?;
-    file.sync_all()
+    temporary
+        .as_file_mut()
+        .sync_all()
         .with_context(|| format!("cannot sync `{}`", path.display()))?;
+    set_team_permissions(temporary.as_file(), args.team)?;
+    temporary
+        .persist_noclobber(&path)
+        .map_err(|error| error.error)
+        .with_context(|| format!("refusing to overwrite `{}`", path.display()))?;
     println!(
         "Saved {} card: {}",
         if args.team { "team" } else { "private" },
         path.display()
     );
     Ok(ExitCode::SUCCESS)
+}
+
+fn prepare_directory(repository: &Repository, team: bool) -> Result<PathBuf> {
+    if team {
+        ensure_real_directory(&repository.shared_cards)?;
+        return Ok(repository.shared_cards.clone());
+    }
+    let private_parent = repository.common_dir.join("fixcard");
+    ensure_real_directory(&private_parent)?;
+    ensure_real_directory(&repository.private_cards)?;
+    Ok(repository.private_cards.clone())
+}
+
+fn ensure_real_directory(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => bail!(
+            "refusing unsafe card storage `{}`: expected a real directory, not a file or symlink",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir(path)
+            .with_context(|| format!("cannot create card directory `{}`", path.display())),
+        Err(error) => Err(error).with_context(|| format!("cannot inspect `{}`", path.display())),
+    }
+}
+
+#[cfg(unix)]
+fn set_team_permissions(file: &File, team: bool) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if team { 0o644 } else { 0o600 };
+    file.set_permissions(fs::Permissions::from_mode(mode))
+        .context("cannot set card permissions")
+}
+
+#[cfg(not(unix))]
+fn set_team_permissions(_file: &File, _team: bool) -> Result<()> {
+    Ok(())
 }
 
 fn required(value: Option<String>, label: &str, interactive: bool) -> Result<String> {
