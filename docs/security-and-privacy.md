@@ -56,6 +56,10 @@ Duplicate IDs across scopes are independent and can be addressed with `repo:`,
 `private:`, and `global:` prefixes. A repository card cannot suppress a
 user-global card merely by declaring the same ID.
 
+On Unix, clone-private and user-global directories are forced to mode `0700`
+and card files to `0600`. On Windows, files inherit the ACL of the user's Git or
+Local AppData directory; Fixcard does not attempt to replace Windows ACLs.
+
 ## Secret scanning limits
 
 Shared creation scans known credential shapes, high-entropy values, embedded

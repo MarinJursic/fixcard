@@ -168,8 +168,10 @@ fn prepare_directory(repository: Option<&Repository>, team: bool, global: bool) 
     if global {
         let directory = user_cards_path()?;
         let parent = directory.parent().context("user card path has no parent")?;
-        fs::create_dir_all(parent)
-            .with_context(|| format!("cannot create user data directory `{}`", parent.display()))?;
+        let base = parent.parent().context("user data path has no base")?;
+        fs::create_dir_all(base)
+            .with_context(|| format!("cannot create user data base `{}`", base.display()))?;
+        ensure_real_directory(parent, true)?;
         ensure_real_directory(&directory, true)?;
         return Ok(directory);
     }

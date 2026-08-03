@@ -155,6 +155,7 @@ impl Repository {
         let mut cards = Vec::new();
         let mut diagnostics = Vec::new();
         let committed_sources = self.committed_shared_sources()?;
+        reject_symlinked_storage_parent(&self.private_cards)?;
         Self::load_directory(
             &self.shared_cards,
             CardOrigin::Shared,
@@ -185,6 +186,7 @@ impl Repository {
     pub fn load_cards_resilient(&self) -> Result<LoadReport, GitError> {
         let mut report = LoadReport::default();
         let committed_sources = self.committed_shared_sources()?;
+        reject_symlinked_storage_parent(&self.private_cards)?;
         Self::load_directory(
             &self.shared_cards,
             CardOrigin::Shared,
@@ -486,6 +488,7 @@ impl Repository {
 pub fn load_user_cards(directory: &Path) -> Result<Vec<LoadedCard>, GitError> {
     let mut cards = Vec::new();
     let mut diagnostics = Vec::new();
+    reject_symlinked_storage_parent(directory)?;
     Repository::load_directory(
         directory,
         CardOrigin::User,
@@ -506,6 +509,7 @@ pub fn load_user_cards(directory: &Path) -> Result<Vec<LoadedCard>, GitError> {
 /// Returns [`GitError`] for unsafe storage, I/O failures, or resource limits.
 pub fn load_user_cards_resilient(directory: &Path) -> Result<LoadReport, GitError> {
     let mut report = LoadReport::default();
+    reject_symlinked_storage_parent(directory)?;
     Repository::load_directory(
         directory,
         CardOrigin::User,
@@ -519,6 +523,22 @@ pub fn load_user_cards_resilient(directory: &Path) -> Result<LoadReport, GitErro
         .sort_by(|left, right| left.document.card.id.cmp(&right.document.card.id));
     record_duplicate_ids(&report.cards, &mut report.diagnostics);
     Ok(report)
+}
+
+fn reject_symlinked_storage_parent(directory: &Path) -> Result<(), GitError> {
+    let Some(parent) = directory.parent() else {
+        return Ok(());
+    };
+    match fs::symlink_metadata(parent) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => Err(GitError::UnsafeCardDirectory(parent.to_owned())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(GitError::Io {
+            action: "cannot inspect card storage parent",
+            path: parent.to_owned(),
+            source,
+        }),
+    }
 }
 
 fn reject_duplicate_ids(cards: &[LoadedCard]) -> Result<(), GitError> {
@@ -823,6 +843,25 @@ mod tests {
         assert!(matches!(
             repository.load_cards(),
             Err(GitError::UnsafeCardDirectory(path)) if path == repository.shared_cards
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlinked_card_storage_parent() {
+        use std::os::unix::fs::symlink;
+        let temp = TempDir::new().unwrap_or_else(|error| panic!("tempdir: {error}"));
+        let outside = temp.path().join("outside");
+        fs::create_dir(&outside).unwrap_or_else(|error| panic!("mkdir outside: {error}"));
+        fs::create_dir(outside.join("cards"))
+            .unwrap_or_else(|error| panic!("mkdir cards: {error}"));
+        let parent = temp.path().join("fixcard");
+        symlink(&outside, &parent).unwrap_or_else(|error| panic!("symlink parent: {error}"));
+        let directory = parent.join("cards");
+
+        assert!(matches!(
+            load_user_cards_resilient(&directory),
+            Err(GitError::UnsafeCardDirectory(path)) if path == parent
         ));
     }
 }
