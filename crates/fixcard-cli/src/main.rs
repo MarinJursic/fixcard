@@ -392,8 +392,17 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
     if let Some(date) = metadata.last_verified.or(metadata.created) {
         println!("  last evidence: {date}");
     }
-    if !metadata.applies.os.is_empty() || !metadata.applies.arch.is_empty() {
+    if !metadata.applies.os.is_empty()
+        || !metadata.applies.arch.is_empty()
+        || !metadata.applies.tools.is_empty()
+    {
         println!("  applies: {}", applies(card));
+    }
+    if !metadata.authors.is_empty() {
+        println!(
+            "  recorded authors: {}",
+            render_untrusted(&metadata.authors.join(", "))
+        );
     }
 
     println!("\n{}", render_untrusted(card.document.body.trim()));

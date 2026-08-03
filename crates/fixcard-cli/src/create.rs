@@ -12,6 +12,7 @@ use fixcard_core::{Applies, Card, MatchSpec, Risk, Verification, parse_card, san
 use fixcard_git::Repository;
 use fixcard_lint::{LintPolicy, Severity, blocks_team_save, lint_card_with_policy, redact_secrets};
 use jiff::Zoned;
+use semver::VersionReq;
 
 use crate::NewArgs;
 
@@ -42,6 +43,22 @@ pub(super) fn create(
         )?)
     } else {
         args.contains.clone()
+    };
+    let not_contains = if args.not_contains.is_empty() && interactive {
+        split_optional(&prompt(
+            "Contradicting match fragments (comma-separated, optional)",
+            "",
+        )?)
+    } else {
+        args.not_contains.clone()
+    };
+    let applies_tools = if args.applies_tools.is_empty() && interactive {
+        split_optional(&prompt(
+            "Applicable tool ranges (NAME=RANGE, comma-separated, optional)",
+            "",
+        )?)
+    } else {
+        args.applies_tools.clone()
     };
     let why = optional(args.why.clone(), "Why this happens (optional)", interactive)?;
     let do_not_apply = optional(
@@ -81,7 +98,7 @@ pub(super) fn create(
     } else {
         repository.author_name()?.into_iter().collect()
     };
-    let tools = parse_tool_ranges(&args.applies_tools)?;
+    let tools = parse_tool_ranges(&applies_tools)?;
     let (os, arch) = if args.no_platform {
         (Vec::new(), Vec::new())
     } else {
@@ -97,7 +114,7 @@ pub(super) fn create(
         match_spec: MatchSpec {
             exact,
             contains,
-            not_contains: args.not_contains.clone(),
+            not_contains,
         },
         applies: Applies { os, arch, tools },
         risk,
@@ -310,6 +327,24 @@ fn parse_tool_ranges(values: &[String]) -> Result<BTreeMap<String, String>> {
         if name.is_empty() || requirement.is_empty() {
             bail!("tool applicability must contain a non-empty name and range")
         }
+        if !name.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '-' | '_')
+        }) || !name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+        {
+            bail!("tool applicability name `{name}` must be a lowercase portable identifier")
+        }
+        let normalized_requirement = requirement
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(", ");
+        VersionReq::parse(&normalized_requirement).with_context(|| {
+            format!("invalid semantic version range `{requirement}` for {name}")
+        })?;
         if tools
             .insert(name.to_owned(), requirement.to_owned())
             .is_some()

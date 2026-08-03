@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use fixcard_core::{CardDocument, Risk};
 use jiff::civil::Date;
 use regex::Regex;
-use semver::VersionReq;
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 
 static SECRET_PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
@@ -446,15 +446,57 @@ fn lint_versions(document: &CardDocument, diagnostics: &mut Vec<Diagnostic>) {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(", ");
-        if VersionReq::parse(&normalized).is_err() {
-            diagnostics.push(Diagnostic {
+        match VersionReq::parse(&normalized) {
+            Err(_) => diagnostics.push(Diagnostic {
                 code: "invalid-version-range",
                 severity: Severity::Error,
                 message: format!("`{requirement}` is not a valid version range for `{tool}`"),
                 line: None,
-            });
+            }),
+            Ok(requirement) if !version_requirement_has_candidate(&requirement) => {
+                diagnostics.push(Diagnostic {
+                    code: "impossible-version-range",
+                    severity: Severity::Error,
+                    message: format!("version range for `{tool}` cannot match any version"),
+                    line: None,
+                });
+            }
+            Ok(_) => {}
         }
     }
+}
+
+fn version_requirement_has_candidate(requirement: &VersionReq) -> bool {
+    let mut candidates = BTreeSet::from([Version::new(0, 0, 0)]);
+    for comparator in &requirement.comparators {
+        let minor = comparator.minor.unwrap_or(0);
+        let patch = comparator.patch.unwrap_or(0);
+        let mut base = Version::new(comparator.major, minor, patch);
+        base.pre.clone_from(&comparator.pre);
+        candidates.insert(base);
+        candidates.insert(Version::new(comparator.major, minor, patch));
+        if let Some(next) = patch.checked_add(1) {
+            candidates.insert(Version::new(comparator.major, minor, next));
+        }
+        if patch > 0 {
+            candidates.insert(Version::new(comparator.major, minor, patch - 1));
+        }
+        if let Some(next) = minor.checked_add(1) {
+            candidates.insert(Version::new(comparator.major, next, 0));
+        }
+        if minor > 0 {
+            candidates.insert(Version::new(comparator.major, minor - 1, 0));
+        }
+        if let Some(next) = comparator.major.checked_add(1) {
+            candidates.insert(Version::new(next, 0, 0));
+        }
+        if comparator.major > 0 {
+            candidates.insert(Version::new(comparator.major - 1, 0, 0));
+        }
+    }
+    candidates
+        .iter()
+        .any(|candidate| requirement.matches(candidate))
 }
 
 fn lint_validation(document: &CardDocument, diagnostics: &mut Vec<Diagnostic>) {
@@ -889,6 +931,20 @@ mod tests {
             diagnostics
                 .iter()
                 .any(|item| item.code == "invalid-source-commit")
+        );
+    }
+
+    #[test]
+    fn rejects_an_impossible_version_range() {
+        let source = source("cargo test", "low").replace(
+            "risk: low",
+            "applies:\n  tools:\n    node: '>=22 <20'\nrisk: low",
+        );
+        let card = parse_card(&source).unwrap_or_else(|error| panic!("fixture: {error}"));
+        assert!(
+            lint_card(&card, &source, None)
+                .iter()
+                .any(|item| item.code == "impossible-version-range")
         );
     }
 

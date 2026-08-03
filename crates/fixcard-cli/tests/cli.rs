@@ -196,6 +196,12 @@ fn creates_and_lints_a_team_card_non_interactively() {
         .assert()
         .success()
         .stdout(predicate::str::contains("0 error(s)"));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["show", "generated-stale"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recorded authors: Fixcard Test"));
 }
 
 #[test]
@@ -225,6 +231,25 @@ fn creation_records_negative_and_tool_applicability_conditions() {
     assert!(source.contains("os: []\n  arch: []"));
     assert!(source.contains("authors: []"));
     assert!(source.contains("## Do not apply when"));
+}
+
+#[test]
+fn rejects_an_invalid_tool_range_before_saving() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.extend(["--applies-tool", "node=not-a-range"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid semantic version range"));
+    assert!(
+        !repository
+            .path()
+            .join(".fixcards/generated-stale.md")
+            .exists()
+    );
 }
 
 #[test]
