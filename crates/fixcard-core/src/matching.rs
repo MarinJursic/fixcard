@@ -106,7 +106,8 @@ fn score_card<'a>(
     options: &SearchOptions,
 ) -> Option<MatchResult<'a>> {
     let card = &loaded.document.card;
-    if card.retired && !options.include_retired {
+    let inactive = card.retired || card.superseded_by.is_some();
+    if inactive && !options.include_retired {
         return None;
     }
     let mut score = 0;
@@ -115,7 +116,9 @@ fn score_card<'a>(
 
     for anchor in &card.match_spec.exact {
         let anchor_normalized = normalize_failure(anchor);
-        if !anchor_normalized.text.is_empty() && query_lower.contains(&anchor_normalized.text) {
+        if !anchor_normalized.text.is_empty()
+            && exact_anchor_matches(query_lower, &anchor_normalized.text)
+        {
             add(
                 &mut score,
                 &mut evidence,
@@ -233,6 +236,14 @@ fn score_card<'a>(
     if card.retired {
         add(&mut score, &mut evidence, -80, "card is retired".to_owned());
     }
+    if let Some(replacement) = &card.superseded_by {
+        add(
+            &mut score,
+            &mut evidence,
+            -80,
+            format!("card is superseded by `{replacement}`"),
+        );
+    }
 
     let has_exact = evidence.iter().any(|item| item.points == 50);
     let positive_anchor_count = evidence
@@ -244,7 +255,7 @@ fn score_card<'a>(
     }
     let confidence = if !version_mismatch
         && negative.is_none()
-        && !card.retired
+        && !inactive
         && ((has_exact && score >= 45) || (positive_anchor_count >= 2 && score >= 30))
     {
         Confidence::Strong
@@ -260,6 +271,28 @@ fn score_card<'a>(
         version_mismatch,
         stale,
     })
+}
+
+fn exact_anchor_matches(query: &str, anchor: &str) -> bool {
+    if anchor
+        .chars()
+        .all(|character| character.is_alphanumeric() || matches!(character, '_' | '-'))
+    {
+        return query.match_indices(anchor).any(|(start, matched)| {
+            let end = start + matched.len();
+            let before_is_word = query[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_anchor_character);
+            let after_is_word = query[end..].chars().next().is_some_and(is_anchor_character);
+            !before_is_word && !after_is_word
+        });
+    }
+    query.contains(anchor)
+}
+
+fn is_anchor_character(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | '-')
 }
 
 fn card_tokens(card: &LoadedCard) -> BTreeSet<String> {
@@ -407,6 +440,47 @@ Use pnpm 10 to regenerate pnpm-lock.yaml.
             &cards,
             &Environment::default(),
             &SearchOptions::default(),
+        );
+        assert_eq!(results[0].confidence, Confidence::Weak);
+    }
+
+    #[test]
+    fn exact_anchor_does_not_match_a_longer_diagnostic_code() {
+        let cards = [loaded("")];
+        let results = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE_EXTRA",
+            &cards,
+            &Environment::default(),
+            &SearchOptions::default(),
+        );
+        assert!(
+            results
+                .iter()
+                .all(|result| result.confidence == Confidence::Weak)
+        );
+    }
+
+    #[test]
+    fn superseded_card_is_hidden_unless_inactive_cards_are_requested() {
+        let cards = [loaded("superseded_by: replacement\n")];
+        assert!(
+            search(
+                "ERR_PNPM_OUTDATED_LOCKFILE",
+                &cards,
+                &Environment::default(),
+                &SearchOptions::default(),
+            )
+            .is_empty()
+        );
+        let options = SearchOptions {
+            include_retired: true,
+            ..SearchOptions::default()
+        };
+        let results = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE",
+            &cards,
+            &Environment::default(),
+            &options,
         );
         assert_eq!(results[0].confidence, Confidence::Weak);
     }

@@ -66,8 +66,8 @@ struct FindArgs {
     /// Supply a current tool version as NAME=SEMVER; repeatable.
     #[arg(long = "tool", value_name = "NAME=VERSION")]
     tools: Vec<String>,
-    /// Include explicitly retired cards as weak candidates.
-    #[arg(long)]
+    /// Include retired or superseded cards as weak candidates.
+    #[arg(long, alias = "include-inactive")]
     include_retired: bool,
 }
 
@@ -285,6 +285,8 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
     println!("  risk: {}", risk(metadata.risk));
     if metadata.retired {
         println!("  state: retired");
+    } else if let Some(replacement) = &metadata.superseded_by {
+        println!("  state: superseded by {}", sanitize_terminal(replacement));
     } else if metadata.verified.is_none() {
         println!("  state: unverified");
     } else {

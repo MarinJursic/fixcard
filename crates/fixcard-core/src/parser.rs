@@ -196,4 +196,10 @@ Run the repository generator and review its diff.
     fn accepts_crlf() {
         assert!(parse_card(&VALID.replace('\n', "\r\n")).is_ok());
     }
+
+    #[test]
+    fn rejects_duplicate_mapping_keys() {
+        let input = VALID.replace("id: build-failed", "id: build-failed\nid: other");
+        assert!(parse_card(&input).is_err());
+    }
 }
