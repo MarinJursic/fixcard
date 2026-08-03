@@ -3,6 +3,20 @@
 Production-v1 builds are currently distributed as release-candidate archives
 while the public validation gates are completed.
 
+## Homebrew on macOS or Linux
+
+Install the architecture-specific, checksum-pinned upstream binary:
+
+```bash
+brew install MarinJursic/tap/fixcard
+fixcard --version
+```
+
+The fully qualified formula name uses Homebrew's formula-scoped trust flow; it
+does not require trusting every future item in the tap. The
+[public formula](https://github.com/MarinJursic/homebrew-tap/blob/main/Formula/fixcard.rb)
+is tested on Intel and ARM variants of macOS and Linux.
+
 ## Download a release archive
 
 Choose the archive for the target:
@@ -130,6 +144,12 @@ Clone-private cards remain under `<git-common-dir>/fixcard/cards`; repository
 cards remain under `.fixcards/`.
 
 ## Uninstall
+
+For a Homebrew installation:
+
+```bash
+brew uninstall fixcard
+```
 
 For a Cargo installation:
 
