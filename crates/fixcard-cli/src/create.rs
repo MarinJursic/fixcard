@@ -137,7 +137,7 @@ pub(super) fn create(
     )?;
     let document = parse_card(&source).context("generated card failed format validation")?;
     let diagnostics = lint_card_with_policy(&document, &source, Some(today), policy);
-    print_preview(&source, &diagnostics);
+    print_preview(&source, &diagnostics)?;
     if args.team && blocks_team_save(&diagnostics) {
         bail!("team card was not saved because lint reported blocking errors")
     }
@@ -151,7 +151,7 @@ pub(super) fn create(
             .interact()
             .context("confirmation failed")?
         {
-            println!("Card was not saved.");
+            outputln!("Card was not saved.")?;
             return Ok(ExitCode::from(1));
         }
     }
@@ -178,11 +178,11 @@ pub(super) fn create(
         .persist_noclobber(&path)
         .map_err(|error| error.error)
         .with_context(|| format!("refusing to overwrite `{}`", path.display()))?;
-    println!(
+    outputln!(
         "Saved {} card: {}",
         if args.team { "team" } else { "private" },
         path.display()
-    );
+    )?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -283,28 +283,29 @@ fn render(
     Ok(format!("---\n{yaml}---\n{body}"))
 }
 
-fn print_preview(source: &str, diagnostics: &[fixcard_lint::Diagnostic]) {
-    println!(
+fn print_preview(source: &str, diagnostics: &[fixcard_lint::Diagnostic]) -> Result<()> {
+    outputln!(
         "\nPreview\n\n{}",
         sanitize_terminal(&redact_secrets(source))
-    );
+    )?;
     if diagnostics.is_empty() {
-        println!("\nLint: no findings");
-        return;
+        outputln!("\nLint: no findings")?;
+        return Ok(());
     }
-    println!("\nLint findings");
+    outputln!("\nLint findings")?;
     for diagnostic in diagnostics {
         let severity = match diagnostic.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
             Severity::Note => "note",
         };
-        println!(
+        outputln!(
             "  {severity}[{}]: {}",
             diagnostic.code,
             sanitize_terminal(&diagnostic.message)
-        );
+        )?;
     }
+    Ok(())
 }
 
 fn parse_risk(value: &str) -> Result<Risk> {

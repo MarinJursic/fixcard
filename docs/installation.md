@@ -6,14 +6,15 @@ the following approaches.
 ## Install from Git
 
 ```bash
-cargo install --git https://github.com/MarinJursic/fixcard --locked fixcard
+cargo install --git https://github.com/MarinJursic/fixcard \
+  --tag v0.1.0-alpha.2 --locked fixcard
 fixcard --version
 ```
 
 `--locked` uses the dependency versions committed by the project. Upgrade by
 running the same command with `--force`.
 
-To install a reproducible tag, add `--tag vX.Y.Z` after the repository URL.
+Change the tag explicitly when upgrading so installation remains reproducible.
 
 ## Build a checkout
 
@@ -28,8 +29,9 @@ The pinned toolchain is selected automatically by `rust-toolchain.toml`.
 
 ## Tagged binaries
 
-Tagged prereleases attach native archives and a `SHA256SUMS` file to the GitHub
-release. Check the digest before installing:
+The [current prerelease](https://github.com/MarinJursic/fixcard/releases/tag/v0.1.0-alpha.2)
+attaches native archives and a `SHA256SUMS` file. Check the digest before
+installing:
 
 ```bash
 shasum -a 256 -c SHA256SUMS

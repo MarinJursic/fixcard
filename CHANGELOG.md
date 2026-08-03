@@ -6,6 +6,13 @@ versioning after the first stable format release.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-08-03
+
+### Fixed
+
+- Treat a downstream stdout consumer closing early as a clean exit instead of
+  panicking with a broken-pipe error.
+
 ## [0.1.0-alpha.1] - 2026-08-03
 
 ### Added
@@ -30,4 +37,5 @@ versioning after the first stable format release.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
 [Unreleased]: https://github.com/MarinJursic/fixcard/commits/main
+[0.1.0-alpha.2]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/MarinJursic/fixcard/compare/7685c83...v0.1.0-alpha.1
