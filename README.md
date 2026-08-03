@@ -64,11 +64,13 @@ The current alpha can be built directly from the public repository:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v0.1.0-alpha.1 --locked fixcard
+  --tag v0.1.0-alpha.2 --locked fixcard
 ```
 
-Rust 1.85 or newer is supported. Tagged prereleases will also provide
-cross-platform binaries, checksums, an SBOM, and GitHub artifact attestations.
+Rust 1.85 or newer is supported. The
+[current prerelease](https://github.com/MarinJursic/fixcard/releases/tag/v0.1.0-alpha.2)
+also provides cross-platform binaries, checksums, an SBOM, and GitHub artifact
+attestations.
 See [Installation and verification](docs/installation.md) for source builds,
 upgrades, and artifact verification.
 

@@ -10,7 +10,7 @@
 - [x] 1,000-card performance gate
 - [x] cross-platform CI and security automation proven green
 - [x] complete user and authoring documentation
-- [ ] signed/provenance-attested prerelease artifacts with checksums and SBOM
+- [x] signed/provenance-attested prerelease artifacts with checksums and SBOM
 
 ## Validation before 1.0
 

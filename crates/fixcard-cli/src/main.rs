@@ -1,11 +1,21 @@
 //! Fixcard command-line entry point.
 
+macro_rules! outputln {
+    () => {
+        crate::write_stdout(format_args!(""))
+    };
+    ($($argument:tt)*) => {
+        crate::write_stdout(format_args!($($argument)*))
+    };
+}
+
 mod create;
 
 use std::collections::BTreeMap;
 use std::env;
+use std::fmt;
 use std::fs;
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -138,11 +148,30 @@ struct NewArgs {
 fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
+        Err(error) if is_broken_pipe(&error) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("error: {}", sanitize_terminal(&format!("{error:#}")));
+            let _ = writeln!(
+                io::stderr().lock(),
+                "error: {}",
+                sanitize_terminal(&format!("{error:#}"))
+            );
             ExitCode::from(2)
         }
     }
+}
+
+fn write_stdout(arguments: fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    stdout.write_fmt(arguments)?;
+    stdout.write_all(b"\n")
+}
+
+fn is_broken_pipe(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<io::Error>()
+            .is_some_and(|error| error.kind() == io::ErrorKind::BrokenPipe)
+    })
 }
 
 fn run() -> Result<ExitCode> {
@@ -183,7 +212,7 @@ fn lint(
             .collect()
     };
     if paths.is_empty() {
-        println!("No Fixcards found to lint.");
+        outputln!("No Fixcards found to lint.")?;
         return Ok(ExitCode::SUCCESS);
     }
     let today = Some(Zoned::now().date());
@@ -198,7 +227,7 @@ fn lint(
             .with_context(|| format!("cannot parse `{}`", path.display()))?;
         cards.push((path, source, document));
     }
-    let mut print_diagnostic = |path: &std::path::Path, diagnostic: &Diagnostic| {
+    let mut print_diagnostic = |path: &std::path::Path, diagnostic: &Diagnostic| -> Result<()> {
         let severity = match diagnostic.severity {
             Severity::Error => {
                 error_count += 1;
@@ -217,17 +246,18 @@ fn lint(
             || path.display().to_string(),
             |line| format!("{}:{line}", path.display()),
         );
-        println!(
+        outputln!(
             "{}: {}[{}]: {}",
             sanitize_terminal(&location),
             severity,
             diagnostic.code,
             sanitize_terminal(&diagnostic.message)
-        );
+        )?;
+        Ok(())
     };
     for (path, source, document) in &cards {
         for diagnostic in lint_card_with_policy(document, source, today, policy) {
-            print_diagnostic(path, &diagnostic);
+            print_diagnostic(path, &diagnostic)?;
         }
         if path.file_stem().and_then(std::ffi::OsStr::to_str) != Some(&document.card.id) {
             print_diagnostic(
@@ -241,7 +271,7 @@ fn lint(
                     ),
                     line: None,
                 },
-            );
+            )?;
         }
     }
     if lint_set {
@@ -254,15 +284,15 @@ fn lint(
                 .iter()
                 .find(|(_, _, document)| document.card.id == finding.card_id)
             {
-                print_diagnostic(path, &finding.diagnostic);
+                print_diagnostic(path, &finding.diagnostic)?;
             }
         }
     }
-    println!(
+    outputln!(
         "\nLinted {} card{}: {error_count} error(s), {warning_count} warning(s), {note_count} note(s)",
         paths.len(),
         if paths.len() == 1 { "" } else { "s" }
-    );
+    )?;
     Ok(if error_count == 0 {
         ExitCode::SUCCESS
     } else {
@@ -324,9 +354,9 @@ fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {
     }
     let cards = repository.load_cards()?;
     if cards.is_empty() {
-        println!("No Fixcards exist in this repository yet.");
-        println!("Shared cards: {}", repository.shared_cards.display());
-        println!("Private cards: {}", repository.private_cards.display());
+        outputln!("No Fixcards exist in this repository yet.")?;
+        outputln!("Shared cards: {}", repository.shared_cards.display())?;
+        outputln!("Private cards: {}", repository.private_cards.display())?;
         return Ok(ExitCode::from(1));
     }
     let environment = environment(&args.tools)?;
@@ -342,28 +372,28 @@ fn find(repository: &Repository, args: &FindArgs) -> Result<ExitCode> {
         .collect::<Vec<_>>();
 
     if let Some(best) = strong.first() {
-        println!("1 strong repository match\n");
-        print_summary(best, args.explain);
-        println!("\nRun: fixcard show {}", best.card.document.card.id);
+        outputln!("1 strong repository match\n")?;
+        print_summary(best, args.explain)?;
+        outputln!("\nRun: fixcard show {}", best.card.document.card.id)?;
         if args.all {
-            print_other_candidates(&results, &best.card.document.card.id, args.explain);
+            print_other_candidates(&results, &best.card.document.card.id, args.explain)?;
         }
         return Ok(ExitCode::SUCCESS);
     }
 
-    println!("No strong repository match.");
+    outputln!("No strong repository match.")?;
     if results.is_empty() {
         return Ok(ExitCode::from(1));
     }
-    println!(
+    outputln!(
         "{} weak candidate{} available with --all.",
         results.len(),
         if results.len() == 1 { " is" } else { "s are" }
-    );
+    )?;
     if args.all {
         for result in results.iter().take(10) {
-            println!();
-            print_summary(result, args.explain);
+            outputln!()?;
+            print_summary(result, args.explain)?;
         }
     }
     Ok(ExitCode::from(1))
@@ -376,57 +406,57 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         .find(|candidate| candidate.document.card.id == id)
         .ok_or_else(|| anyhow!("no card with id `{}`", sanitize_terminal(id)))?;
     let metadata = &card.document.card;
-    println!("{}\n", render_untrusted(&metadata.title));
-    println!("Trust");
-    println!("  origin: {}", origin(card.origin));
-    println!("  risk: {}", risk(metadata.risk));
+    outputln!("{}\n", render_untrusted(&metadata.title))?;
+    outputln!("Trust")?;
+    outputln!("  origin: {}", origin(card.origin))?;
+    outputln!("  risk: {}", risk(metadata.risk))?;
     if metadata.retired {
-        println!("  state: retired");
+        outputln!("  state: retired")?;
     } else if let Some(replacement) = &metadata.superseded_by {
-        println!("  state: superseded by {}", render_untrusted(replacement));
+        outputln!("  state: superseded by {}", render_untrusted(replacement))?;
     } else if metadata.verified.is_none() {
-        println!("  state: unverified");
+        outputln!("  state: unverified")?;
     } else {
-        println!("  state: recorded validation");
+        outputln!("  state: recorded validation")?;
     }
     if let Some(date) = metadata.last_verified.or(metadata.created) {
-        println!("  last evidence: {date}");
+        outputln!("  last evidence: {date}")?;
     }
     if !metadata.applies.os.is_empty()
         || !metadata.applies.arch.is_empty()
         || !metadata.applies.tools.is_empty()
     {
-        println!("  applies: {}", applies(card));
+        outputln!("  applies: {}", applies(card))?;
     }
     if !metadata.authors.is_empty() {
-        println!(
+        outputln!(
             "  recorded authors: {}",
             render_untrusted(&metadata.authors.join(", "))
-        );
+        )?;
     }
 
-    println!("\n{}", render_untrusted(card.document.body.trim()));
+    outputln!("\n{}", render_untrusted(card.document.body.trim()))?;
     if let Some(verification) = &metadata.verified {
-        println!("\nValidation recorded");
-        println!("  command: {}", render_untrusted(&verification.command));
+        outputln!("\nValidation recorded")?;
+        outputln!("  command: {}", render_untrusted(&verification.command))?;
         if let Some(exit_code) = verification.exit_code {
-            println!("  observed exit: {exit_code}");
+            outputln!("  observed exit: {exit_code}")?;
         }
         if let Some(commit) = &verification.source_commit {
-            println!("  source commit: {}", sanitize_terminal(commit));
+            outputln!("  source commit: {}", sanitize_terminal(commit))?;
         }
     }
     if card.origin == CardOrigin::Shared {
         if let Some(provenance) = repository.provenance(&card.path)? {
-            println!("\nGit provenance");
-            println!("  commit: {}", provenance.commit);
-            println!("  author: {}", render_untrusted(&provenance.author));
-            println!("  authored: {}", provenance.authored_at);
+            outputln!("\nGit provenance")?;
+            outputln!("  commit: {}", provenance.commit)?;
+            outputln!("  author: {}", render_untrusted(&provenance.author))?;
+            outputln!("  authored: {}", provenance.authored_at)?;
         }
     }
-    println!(
+    outputln!(
         "\nThis is evidence of a previous resolution, not a guarantee. Review commands before running them."
-    );
+    )?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -439,7 +469,7 @@ fn read_query(arguments: &[String]) -> Result<String> {
         return Ok(query);
     }
     if io::stdin().is_terminal() {
-        eprintln!("Paste the failure, then press Ctrl-D:");
+        let _ = writeln!(io::stderr().lock(), "Paste the failure, then press Ctrl-D:");
     }
     let mut bytes = Vec::new();
     io::stdin()
@@ -479,10 +509,10 @@ fn environment(values: &[String]) -> Result<Environment> {
     })
 }
 
-fn print_summary(result: &MatchResult<'_>, explain: bool) {
+fn print_summary(result: &MatchResult<'_>, explain: bool) -> Result<()> {
     let card = &result.card.document.card;
-    println!("{}", render_untrusted(&card.id));
-    println!("{}", render_untrusted(&card.title));
+    outputln!("{}", render_untrusted(&card.id))?;
+    outputln!("{}", render_untrusted(&card.title))?;
     let mut states = vec![
         origin(result.card.origin).to_owned(),
         risk(card.risk).to_owned(),
@@ -496,15 +526,15 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) {
     if result.version_mismatch {
         states.push("version-mismatch".to_owned());
     }
-    println!("{}", states.join(" · "));
+    outputln!("{}", states.join(" · "))?;
     let applies = applies(result.card);
     if !applies.is_empty() {
-        println!("applies: {applies}");
+        outputln!("applies: {applies}")?;
     }
     if explain {
-        println!("score: {}", result.score);
+        outputln!("score: {}", result.score)?;
         for item in &result.evidence {
-            println!("  {:+} {}", item.points, render_untrusted(&item.reason));
+            outputln!("  {:+} {}", item.points, render_untrusted(&item.reason))?;
         }
     } else {
         let anchors = result
@@ -514,25 +544,27 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) {
             .map(|item| render_untrusted(&item.reason))
             .collect::<Vec<_>>();
         if !anchors.is_empty() {
-            println!("matched: {}", anchors.join(", "));
+            outputln!("matched: {}", anchors.join(", "))?;
         }
     }
+    Ok(())
 }
 
-fn print_other_candidates(results: &[MatchResult<'_>], best_id: &str, explain: bool) {
+fn print_other_candidates(results: &[MatchResult<'_>], best_id: &str, explain: bool) -> Result<()> {
     let others = results
         .iter()
         .filter(|result| result.card.document.card.id != best_id)
         .take(9)
         .collect::<Vec<_>>();
     if others.is_empty() {
-        return;
+        return Ok(());
     }
-    println!("\nOther candidates");
+    outputln!("\nOther candidates")?;
     for result in others {
-        println!();
-        print_summary(result, explain);
+        outputln!()?;
+        print_summary(result, explain)?;
     }
+    Ok(())
 }
 
 fn applies(card: &LoadedCard) -> String {

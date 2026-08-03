@@ -8,8 +8,9 @@
 )]
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
@@ -128,6 +129,42 @@ fn shows_the_evidence_notice() {
         .stdout(predicate::str::contains(
             "evidence of a previous resolution, not a guarantee",
         ));
+}
+
+#[test]
+fn exits_cleanly_when_a_stdout_consumer_closes_early() {
+    let repository = repository();
+    let large_body = "x".repeat(128 * 1024);
+    let source = CARD.replace(
+        "Run the repository generator and review its diff.",
+        &large_body,
+    );
+    fs::write(repository.path().join(".fixcards/known-build.md"), source)
+        .expect("write large card");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fixcard"))
+        .current_dir(repository.path())
+        .args(["show", "known-build"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start fixcard");
+    let mut stdout = child.stdout.take().expect("capture stdout");
+    let mut first_byte = [0_u8; 1];
+    stdout
+        .read_exact(&mut first_byte)
+        .expect("read initial output");
+    drop(stdout);
+
+    let output = child.wait_with_output().expect("wait for fixcard");
+    assert!(
+        output.status.success(),
+        "closed stdout should be a successful early exit: {output:?}"
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("panicked"),
+        "broken pipes must not produce a panic"
+    );
 }
 
 #[test]
