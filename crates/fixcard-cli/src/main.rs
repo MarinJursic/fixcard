@@ -44,7 +44,7 @@ enum Command {
         id: String,
     },
     /// Create a private card, or explicitly create a repository card.
-    New(NewArgs),
+    New(Box<NewArgs>),
     /// Validate cards and flag unsafe or stale content.
     Lint {
         /// Card file or directory; defaults to this repository's cards.
@@ -72,6 +72,10 @@ struct FindArgs {
 }
 
 #[derive(Clone, Debug, Args)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent opt-in CLI switches are clearer than artificial enum state"
+)]
 struct NewArgs {
     /// Save to `.fixcards/` for Git review instead of private clone storage.
     #[arg(long)]
@@ -88,9 +92,21 @@ struct NewArgs {
     /// Additional literal failure fragment; repeatable.
     #[arg(long = "contains")]
     contains: Vec<String>,
+    /// Literal fragment that disproves this match; repeatable.
+    #[arg(long = "not-contains")]
+    not_contains: Vec<String>,
+    /// Known-compatible tool range as NAME=RANGE; repeatable.
+    #[arg(long = "applies-tool", value_name = "NAME=RANGE")]
+    applies_tools: Vec<String>,
+    /// Do not restrict this card to the current OS and architecture.
+    #[arg(long)]
+    no_platform: bool,
     /// Explanation of the failure's cause.
     #[arg(long)]
     why: Option<String>,
+    /// Situation in which this resolution should not be used.
+    #[arg(long)]
+    do_not_apply: Option<String>,
     /// Human-confirmed resolution text.
     #[arg(long)]
     resolution: Option<String>,
@@ -106,6 +122,9 @@ struct NewArgs {
     /// Declared risk: low, medium, or high.
     #[arg(long, default_value = "low")]
     risk: String,
+    /// Omit the current Git author identity from the card.
+    #[arg(long)]
+    no_author: bool,
     /// Accept the rendered preview without an interactive confirmation.
     #[arg(long, short = 'y')]
     yes: bool,

@@ -166,6 +166,35 @@ fn creates_and_lints_a_team_card_non_interactively() {
 }
 
 #[test]
+fn creation_records_negative_and_tool_applicability_conditions() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.extend([
+        "--not-contains",
+        "using npm",
+        "--applies-tool",
+        "node=>=22 <23",
+        "--do-not-apply",
+        "Do not use this when the repository is managed by npm.",
+        "--no-platform",
+        "--no-author",
+    ]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .success();
+
+    let source = fs::read_to_string(repository.path().join(".fixcards/generated-stale.md"))
+        .expect("read created team card");
+    assert!(source.contains("not_contains:\n  - using npm"));
+    assert!(source.contains("node: '>=22 <23'"));
+    assert!(source.contains("os: []\n  arch: []"));
+    assert!(source.contains("authors: []"));
+    assert!(source.contains("## Do not apply when"));
+}
+
+#[test]
 fn private_creation_uses_the_git_common_directory() {
     let repository = empty_repository();
     let mut args = creation_args().to_vec();
