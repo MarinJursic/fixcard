@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: fixcard
+            format: tar
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            executable: fixcard
+            format: tar
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: fixcard
+            format: tar
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: fixcard
+            format: tar
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            executable: fixcard.exe
+            format: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag matches package version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "fixcard") | .version')"
+          test "$tag_version" = "$package_version"
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build locked release binary
+        run: cargo build --release --locked -p fixcard --target ${{ matrix.target }}
+      - name: Smoke-test native binary
+        if: ${{ !contains(matrix.target, 'apple') || (contains(matrix.target, 'x86_64') && runner.arch == 'X64') || (contains(matrix.target, 'aarch64') && runner.arch == 'ARM64') }}
+        shell: bash
+        run: target/${{ matrix.target }}/release/${{ matrix.executable }} --version
+      - name: Package Unix archive
+        if: matrix.format == 'tar'
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          package="fixcard-${version}-${{ matrix.target }}"
+          mkdir -p "staging/${package}" dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable }}" "staging/${package}/"
+          cp README.md LICENSE CHANGELOG.md "staging/${package}/"
+          tar -czf "dist/${package}.tar.gz" -C staging "${package}"
+      - name: Package Windows archive
+        if: matrix.format == 'zip'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $package = "fixcard-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "staging/$package", dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable }}" "staging/$package/"
+          Copy-Item README.md, LICENSE, CHANGELOG.md "staging/$package/"
+          Compress-Archive -Path "staging/$package" -DestinationPath "dist/$package.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attest and publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Generate CycloneDX SBOM
+        run: |
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx \
+            --manifest-path crates/fixcard-cli/Cargo.toml \
+            --format json \
+            --describe binaries \
+            --all \
+            --target all \
+            --spec-version 1.5
+          mv crates/fixcard-cli/fixcard_bin.cdx.json dist/fixcard.cdx.json
+      - name: Generate archive checksums
+        working-directory: dist
+        run: sha256sum fixcard-*.tar.gz fixcard-*.zip > SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Attest SBOM for release archives
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+          sbom-path: dist/fixcard.cdx.json
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          flags=()
+          if [[ "${GITHUB_REF_NAME#v}" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --generate-notes \
+            --title "Fixcard $GITHUB_REF_NAME" \
+            "${flags[@]}"

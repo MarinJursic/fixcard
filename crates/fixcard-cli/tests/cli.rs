@@ -131,6 +131,39 @@ fn shows_the_evidence_notice() {
 }
 
 #[test]
+fn redacts_secret_like_values_when_showing_an_existing_card() {
+    let repository = repository();
+    let secret = "ghp_1234567890abcdefghijklmnopqrst";
+    let source = CARD.replace(
+        "Run the repository generator and review its diff.",
+        &format!("Remove the accidentally recorded token {secret}."),
+    );
+    fs::write(repository.path().join(".fixcards/known-build.md"), source)
+        .expect("write card containing test-shaped secret");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["show", "known-build"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(secret).not())
+        .stdout(predicate::str::contains("[REDACTED]"));
+}
+
+#[test]
+fn lint_reports_an_id_filename_mismatch() {
+    let repository = repository();
+    let original = repository.path().join(".fixcards/known-build.md");
+    let renamed = repository.path().join(".fixcards/wrong-name.md");
+    fs::rename(original, &renamed).expect("rename fixture card");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["lint", renamed.to_str().expect("UTF-8 path")])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("id-filename-mismatch"));
+}
+
+#[test]
 fn fails_clearly_outside_a_repository() {
     let directory = TempDir::new().expect("create non-repository directory");
     cargo_bin_cmd!("fixcard")
@@ -163,6 +196,60 @@ fn creates_and_lints_a_team_card_non_interactively() {
         .assert()
         .success()
         .stdout(predicate::str::contains("0 error(s)"));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["show", "generated-stale"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recorded authors: Fixcard Test"));
+}
+
+#[test]
+fn creation_records_negative_and_tool_applicability_conditions() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.extend([
+        "--not-contains",
+        "using npm",
+        "--applies-tool",
+        "node=>=22 <23",
+        "--do-not-apply",
+        "Do not use this when the repository is managed by npm.",
+        "--no-platform",
+        "--no-author",
+    ]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .success();
+
+    let source = fs::read_to_string(repository.path().join(".fixcards/generated-stale.md"))
+        .expect("read created team card");
+    assert!(source.contains("not_contains:\n  - using npm"));
+    assert!(source.contains("node: '>=22 <23'"));
+    assert!(source.contains("os: []\n  arch: []"));
+    assert!(source.contains("authors: []"));
+    assert!(source.contains("## Do not apply when"));
+}
+
+#[test]
+fn rejects_an_invalid_tool_range_before_saving() {
+    let repository = empty_repository();
+    let mut args = creation_args().to_vec();
+    args.extend(["--applies-tool", "node=not-a-range"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid semantic version range"));
+    assert!(
+        !repository
+            .path()
+            .join(".fixcards/generated-stale.md")
+            .exists()
+    );
 }
 
 #[test]
@@ -214,6 +301,7 @@ fn blocks_a_secret_from_a_team_card() {
         .args(args)
         .assert()
         .code(2)
+        .stdout(predicate::str::contains("ghp_1234567890abcdefghijklmnopqrst").not())
         .stderr(predicate::str::contains("blocking errors"));
     assert!(
         !repository
@@ -242,6 +330,25 @@ fn blocks_understated_dangerous_commands_but_allows_declared_high_risk() {
         .assert()
         .success()
         .stdout(predicate::str::contains("high-risk-command"));
+}
+
+#[test]
+fn repository_policy_blocks_a_denied_command_class() {
+    let repository = empty_repository();
+    fs::write(
+        repository.path().join(".fixcard.toml"),
+        "[lint]\ndeny-command-classes = [\"privileged-command\"]\n",
+    )
+    .expect("write policy");
+    let mut args = creation_args().to_vec();
+    args.extend(["--command", "sudo true", "--risk", "high"]);
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(args)
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("denied-command-class"))
+        .stderr(predicate::str::contains("blocking errors"));
 }
 
 #[test]

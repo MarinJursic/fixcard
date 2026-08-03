@@ -10,8 +10,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use dialoguer::{Confirm, Input};
 use fixcard_core::{Applies, Card, MatchSpec, Risk, Verification, parse_card, sanitize_terminal};
 use fixcard_git::Repository;
-use fixcard_lint::{Severity, blocks_team_save, lint_card};
+use fixcard_lint::{LintPolicy, Severity, blocks_team_save, lint_card_with_policy, redact_secrets};
 use jiff::Zoned;
+use semver::VersionReq;
 
 use crate::NewArgs;
 
@@ -19,7 +20,11 @@ use crate::NewArgs;
     clippy::too_many_lines,
     reason = "creation is a linear reviewed transaction whose ordering is safety-relevant"
 )]
-pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode> {
+pub(super) fn create(
+    repository: &Repository,
+    args: &NewArgs,
+    policy: &LintPolicy,
+) -> Result<ExitCode> {
     let interactive = std::io::stdin().is_terminal();
     let title = required(args.title.clone(), "Short title", interactive)?;
     let id = args.id.clone().unwrap_or_else(|| slugify(&title));
@@ -39,7 +44,28 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
     } else {
         args.contains.clone()
     };
+    let not_contains = if args.not_contains.is_empty() && interactive {
+        split_optional(&prompt(
+            "Contradicting match fragments (comma-separated, optional)",
+            "",
+        )?)
+    } else {
+        args.not_contains.clone()
+    };
+    let applies_tools = if args.applies_tools.is_empty() && interactive {
+        split_optional(&prompt(
+            "Applicable tool ranges (NAME=RANGE, comma-separated, optional)",
+            "",
+        )?)
+    } else {
+        args.applies_tools.clone()
+    };
     let why = optional(args.why.clone(), "Why this happens (optional)", interactive)?;
+    let do_not_apply = optional(
+        args.do_not_apply.clone(),
+        "Do not apply when (optional)",
+        interactive,
+    )?;
     let resolution = required(args.resolution.clone(), "What worked here", interactive)?;
     let commands = if args.commands.is_empty() && interactive {
         split_optional(&prompt(
@@ -67,7 +93,20 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         source_commit,
     });
     let last_verified = verification.as_ref().map(|_| today);
-    let authors = repository.author_name()?.into_iter().collect();
+    let authors = if args.no_author {
+        Vec::new()
+    } else {
+        repository.author_name()?.into_iter().collect()
+    };
+    let tools = parse_tool_ranges(&applies_tools)?;
+    let (os, arch) = if args.no_platform {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            vec![std::env::consts::OS.to_owned()],
+            vec![normalized_arch(std::env::consts::ARCH).to_owned()],
+        )
+    };
     let card = Card {
         fixcard: fixcard_core::SUPPORTED_SCHEMA_VERSION,
         id,
@@ -75,13 +114,9 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         match_spec: MatchSpec {
             exact,
             contains,
-            not_contains: Vec::new(),
+            not_contains,
         },
-        applies: Applies {
-            os: vec![std::env::consts::OS.to_owned()],
-            arch: vec![normalized_arch(std::env::consts::ARCH).to_owned()],
-            tools: BTreeMap::new(),
-        },
+        applies: Applies { os, arch, tools },
         risk,
         verified: verification,
         last_verified,
@@ -93,9 +128,15 @@ pub(super) fn create(repository: &Repository, args: &NewArgs) -> Result<ExitCode
         retirement_reason: None,
         extensions: BTreeMap::new(),
     };
-    let source = render(&card, why.as_deref(), &resolution, &commands)?;
+    let source = render(
+        &card,
+        why.as_deref(),
+        do_not_apply.as_deref(),
+        &resolution,
+        &commands,
+    )?;
     let document = parse_card(&source).context("generated card failed format validation")?;
-    let diagnostics = lint_card(&document, &source, Some(today));
+    let diagnostics = lint_card_with_policy(&document, &source, Some(today), policy);
     print_preview(&source, &diagnostics);
     if args.team && blocks_team_save(&diagnostics) {
         bail!("team card was not saved because lint reported blocking errors")
@@ -212,12 +253,23 @@ fn prompt(label: &str, default: &str) -> Result<String> {
         .with_context(|| format!("prompt failed: {label}"))
 }
 
-fn render(card: &Card, why: Option<&str>, resolution: &str, commands: &[String]) -> Result<String> {
+fn render(
+    card: &Card,
+    why: Option<&str>,
+    do_not_apply: Option<&str>,
+    resolution: &str,
+    commands: &[String],
+) -> Result<String> {
     let yaml = serde_yaml_ng::to_string(card).context("cannot serialize card front matter")?;
     let mut body = String::new();
     if let Some(why) = why {
         body.push_str("## Why this happens\n\n");
         body.push_str(why);
+        body.push_str("\n\n");
+    }
+    if let Some(condition) = do_not_apply {
+        body.push_str("## Do not apply when\n\n");
+        body.push_str(condition);
         body.push_str("\n\n");
     }
     body.push_str("## What worked here\n\n");
@@ -232,7 +284,10 @@ fn render(card: &Card, why: Option<&str>, resolution: &str, commands: &[String])
 }
 
 fn print_preview(source: &str, diagnostics: &[fixcard_lint::Diagnostic]) {
-    println!("\nPreview\n\n{}", sanitize_terminal(source));
+    println!(
+        "\nPreview\n\n{}",
+        sanitize_terminal(&redact_secrets(source))
+    );
     if diagnostics.is_empty() {
         println!("\nLint: no findings");
         return;
@@ -259,6 +314,45 @@ fn parse_risk(value: &str) -> Result<Risk> {
         "high" => Ok(Risk::High),
         _ => Err(anyhow!("risk must be low, medium, or high")),
     }
+}
+
+fn parse_tool_ranges(values: &[String]) -> Result<BTreeMap<String, String>> {
+    let mut tools = BTreeMap::new();
+    for value in values {
+        let Some((name, requirement)) = value.split_once('=') else {
+            bail!("tool applicability must be NAME=RANGE")
+        };
+        let name = name.trim();
+        let requirement = requirement.trim();
+        if name.is_empty() || requirement.is_empty() {
+            bail!("tool applicability must contain a non-empty name and range")
+        }
+        if !name.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '-' | '_')
+        }) || !name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+        {
+            bail!("tool applicability name `{name}` must be a lowercase portable identifier")
+        }
+        let normalized_requirement = requirement
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(", ");
+        VersionReq::parse(&normalized_requirement).with_context(|| {
+            format!("invalid semantic version range `{requirement}` for {name}")
+        })?;
+        if tools
+            .insert(name.to_owned(), requirement.to_owned())
+            .is_some()
+        {
+            bail!("tool applicability repeats `{name}`")
+        }
+    }
+    Ok(tools)
 }
 
 fn slugify(value: &str) -> String {

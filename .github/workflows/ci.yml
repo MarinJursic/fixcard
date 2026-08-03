@@ -37,6 +37,12 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps --locked
       - name: Build optimized binary
         run: cargo build --release -p fixcard --locked
+      - name: Check process startup target
+        run: python3 scripts/check_startup.py target/release/fixcard 75
+      - name: Lint teaching cards
+        run: cargo run -q -p fixcard -- lint examples/repository/.fixcards
+      - name: Lint Markdown
+        run: npx --yes markdownlint-cli2@0.23.2 'README.md' 'docs/**/*.md' 'examples/**/*.md' '*.md' '#target' '#.git'
 
   cross-platform:
     name: Test (${{ matrix.os }})

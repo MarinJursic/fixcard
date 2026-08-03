@@ -16,11 +16,16 @@ use fixcard_core::{
     sanitize_terminal, search,
 };
 use fixcard_git::Repository;
-use fixcard_lint::{Severity, lint_card};
+use fixcard_lint::{
+    Diagnostic, LintPolicy, Severity, lint_card_set, lint_card_with_policy, parse_policy,
+    redact_secrets,
+};
 use jiff::Zoned;
 use semver::Version;
 
 const MAX_QUERY_BYTES: usize = 1024 * 1024;
+const MAX_POLICY_BYTES: u64 = 64 * 1024;
+const POLICY_FILE: &str = ".fixcard.toml";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -44,7 +49,7 @@ enum Command {
         id: String,
     },
     /// Create a private card, or explicitly create a repository card.
-    New(NewArgs),
+    New(Box<NewArgs>),
     /// Validate cards and flag unsafe or stale content.
     Lint {
         /// Card file or directory; defaults to this repository's cards.
@@ -72,6 +77,10 @@ struct FindArgs {
 }
 
 #[derive(Clone, Debug, Args)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent opt-in CLI switches are clearer than artificial enum state"
+)]
 struct NewArgs {
     /// Save to `.fixcards/` for Git review instead of private clone storage.
     #[arg(long)]
@@ -88,9 +97,21 @@ struct NewArgs {
     /// Additional literal failure fragment; repeatable.
     #[arg(long = "contains")]
     contains: Vec<String>,
+    /// Literal fragment that disproves this match; repeatable.
+    #[arg(long = "not-contains")]
+    not_contains: Vec<String>,
+    /// Known-compatible tool range as NAME=RANGE; repeatable.
+    #[arg(long = "applies-tool", value_name = "NAME=RANGE")]
+    applies_tools: Vec<String>,
+    /// Do not restrict this card to the current OS and architecture.
+    #[arg(long)]
+    no_platform: bool,
     /// Explanation of the failure's cause.
     #[arg(long)]
     why: Option<String>,
+    /// Situation in which this resolution should not be used.
+    #[arg(long)]
+    do_not_apply: Option<String>,
     /// Human-confirmed resolution text.
     #[arg(long)]
     resolution: Option<String>,
@@ -106,6 +127,9 @@ struct NewArgs {
     /// Declared risk: low, medium, or high.
     #[arg(long, default_value = "low")]
     risk: String,
+    /// Omit the current Git author identity from the card.
+    #[arg(long)]
+    no_author: bool,
     /// Accept the rendered preview without an interactive confirmation.
     #[arg(long, short = 'y')]
     yes: bool,
@@ -129,12 +153,26 @@ fn run() -> Result<ExitCode> {
     match cli.command.unwrap_or(Command::Find(FindArgs::default())) {
         Command::Find(args) => find(&repository, &args),
         Command::Show { id } => show(&repository, &id),
-        Command::New(args) => create::create(&repository, &args),
-        Command::Lint { path } => lint(&repository, path.as_deref()),
+        Command::New(args) => {
+            let policy = load_policy(&repository)?;
+            create::create(&repository, &args, &policy)
+        }
+        Command::Lint { path } => {
+            let policy = load_policy(&repository)?;
+            lint(&repository, path.as_deref(), &policy)
+        }
     }
 }
 
-fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitCode> {
+fn lint(
+    repository: &Repository,
+    path: Option<&std::path::Path>,
+    policy: &LintPolicy,
+) -> Result<ExitCode> {
+    let lint_set = path.is_none()
+        || path.is_some_and(|value| {
+            fs::symlink_metadata(value).is_ok_and(|metadata| metadata.file_type().is_dir())
+        });
     let paths = if let Some(path) = path {
         lint_paths(path)?
     } else {
@@ -152,38 +190,72 @@ fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitC
     let mut error_count = 0_usize;
     let mut warning_count = 0_usize;
     let mut note_count = 0_usize;
+    let mut cards = Vec::with_capacity(paths.len());
     for path in &paths {
         let source = fs::read_to_string(path)
             .with_context(|| format!("cannot read `{}`", path.display()))?;
         let document = fixcard_core::parse_card(&source)
             .with_context(|| format!("cannot parse `{}`", path.display()))?;
-        let diagnostics = lint_card(&document, &source, today);
-        for diagnostic in diagnostics {
-            let severity = match diagnostic.severity {
-                Severity::Error => {
-                    error_count += 1;
-                    "error"
-                }
-                Severity::Warning => {
-                    warning_count += 1;
-                    "warning"
-                }
-                Severity::Note => {
-                    note_count += 1;
-                    "note"
-                }
-            };
-            let location = diagnostic.line.map_or_else(
-                || path.display().to_string(),
-                |line| format!("{}:{line}", path.display()),
+        cards.push((path, source, document));
+    }
+    let mut print_diagnostic = |path: &std::path::Path, diagnostic: &Diagnostic| {
+        let severity = match diagnostic.severity {
+            Severity::Error => {
+                error_count += 1;
+                "error"
+            }
+            Severity::Warning => {
+                warning_count += 1;
+                "warning"
+            }
+            Severity::Note => {
+                note_count += 1;
+                "note"
+            }
+        };
+        let location = diagnostic.line.map_or_else(
+            || path.display().to_string(),
+            |line| format!("{}:{line}", path.display()),
+        );
+        println!(
+            "{}: {}[{}]: {}",
+            sanitize_terminal(&location),
+            severity,
+            diagnostic.code,
+            sanitize_terminal(&diagnostic.message)
+        );
+    };
+    for (path, source, document) in &cards {
+        for diagnostic in lint_card_with_policy(document, source, today, policy) {
+            print_diagnostic(path, &diagnostic);
+        }
+        if path.file_stem().and_then(std::ffi::OsStr::to_str) != Some(&document.card.id) {
+            print_diagnostic(
+                path,
+                &Diagnostic {
+                    code: "id-filename-mismatch",
+                    severity: Severity::Error,
+                    message: format!(
+                        "card ID `{}` must match its Markdown filename",
+                        document.card.id
+                    ),
+                    line: None,
+                },
             );
-            println!(
-                "{}: {}[{}]: {}",
-                sanitize_terminal(&location),
-                severity,
-                diagnostic.code,
-                sanitize_terminal(&diagnostic.message)
-            );
+        }
+    }
+    if lint_set {
+        let documents = cards
+            .iter()
+            .map(|(_, _, document)| document.clone())
+            .collect::<Vec<_>>();
+        for finding in lint_card_set(&documents) {
+            if let Some((path, _, _)) = cards
+                .iter()
+                .find(|(_, _, document)| document.card.id == finding.card_id)
+            {
+                print_diagnostic(path, &finding.diagnostic);
+            }
         }
     }
     println!(
@@ -198,6 +270,28 @@ fn lint(repository: &Repository, path: Option<&std::path::Path>) -> Result<ExitC
     })
 }
 
+fn load_policy(repository: &Repository) -> Result<LintPolicy> {
+    let path = repository.root.join(POLICY_FILE);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(LintPolicy::default());
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("cannot inspect `{}`", path.display()));
+        }
+    };
+    if !metadata.file_type().is_file() {
+        bail!("Fixcard policy `{}` must be a regular file", path.display())
+    }
+    if metadata.len() > MAX_POLICY_BYTES {
+        bail!("Fixcard policy exceeds the {MAX_POLICY_BYTES}-byte safety limit")
+    }
+    let source = fs::read_to_string(&path)
+        .with_context(|| format!("cannot read Fixcard policy `{}`", path.display()))?;
+    parse_policy(&source).map_err(|error| anyhow!(error))
+}
+
 fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("cannot inspect `{}`", path.display()))?;
@@ -207,9 +301,12 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
     if !metadata.file_type().is_dir() {
         bail!("lint path must be a regular file or directory")
     }
-    let mut paths = fs::read_dir(path)
+    let entries = fs::read_dir(path)
         .with_context(|| format!("cannot read `{}`", path.display()))?
-        .filter_map(Result::ok)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .with_context(|| format!("cannot read an entry in `{}`", path.display()))?;
+    let mut paths = entries
+        .into_iter()
         .map(|entry| entry.path())
         .filter(|candidate| {
             candidate.extension().and_then(std::ffi::OsStr::to_str) == Some("md")
@@ -279,14 +376,14 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         .find(|candidate| candidate.document.card.id == id)
         .ok_or_else(|| anyhow!("no card with id `{}`", sanitize_terminal(id)))?;
     let metadata = &card.document.card;
-    println!("{}\n", sanitize_terminal(&metadata.title));
+    println!("{}\n", render_untrusted(&metadata.title));
     println!("Trust");
     println!("  origin: {}", origin(card.origin));
     println!("  risk: {}", risk(metadata.risk));
     if metadata.retired {
         println!("  state: retired");
     } else if let Some(replacement) = &metadata.superseded_by {
-        println!("  state: superseded by {}", sanitize_terminal(replacement));
+        println!("  state: superseded by {}", render_untrusted(replacement));
     } else if metadata.verified.is_none() {
         println!("  state: unverified");
     } else {
@@ -295,14 +392,23 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
     if let Some(date) = metadata.last_verified.or(metadata.created) {
         println!("  last evidence: {date}");
     }
-    if !metadata.applies.os.is_empty() || !metadata.applies.arch.is_empty() {
+    if !metadata.applies.os.is_empty()
+        || !metadata.applies.arch.is_empty()
+        || !metadata.applies.tools.is_empty()
+    {
         println!("  applies: {}", applies(card));
     }
+    if !metadata.authors.is_empty() {
+        println!(
+            "  recorded authors: {}",
+            render_untrusted(&metadata.authors.join(", "))
+        );
+    }
 
-    println!("\n{}", sanitize_terminal(card.document.body.trim()));
+    println!("\n{}", render_untrusted(card.document.body.trim()));
     if let Some(verification) = &metadata.verified {
         println!("\nValidation recorded");
-        println!("  command: {}", sanitize_terminal(&verification.command));
+        println!("  command: {}", render_untrusted(&verification.command));
         if let Some(exit_code) = verification.exit_code {
             println!("  observed exit: {exit_code}");
         }
@@ -314,7 +420,7 @@ fn show(repository: &Repository, id: &str) -> Result<ExitCode> {
         if let Some(provenance) = repository.provenance(&card.path)? {
             println!("\nGit provenance");
             println!("  commit: {}", provenance.commit);
-            println!("  author: {}", sanitize_terminal(&provenance.author));
+            println!("  author: {}", render_untrusted(&provenance.author));
             println!("  authored: {}", provenance.authored_at);
         }
     }
@@ -375,8 +481,8 @@ fn environment(values: &[String]) -> Result<Environment> {
 
 fn print_summary(result: &MatchResult<'_>, explain: bool) {
     let card = &result.card.document.card;
-    println!("{}", sanitize_terminal(&card.id));
-    println!("{}", sanitize_terminal(&card.title));
+    println!("{}", render_untrusted(&card.id));
+    println!("{}", render_untrusted(&card.title));
     let mut states = vec![
         origin(result.card.origin).to_owned(),
         risk(card.risk).to_owned(),
@@ -398,14 +504,14 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) {
     if explain {
         println!("score: {}", result.score);
         for item in &result.evidence {
-            println!("  {:+} {}", item.points, sanitize_terminal(&item.reason));
+            println!("  {:+} {}", item.points, render_untrusted(&item.reason));
         }
     } else {
         let anchors = result
             .evidence
             .iter()
             .filter(|item| matches!(item.points, 12 | 50))
-            .map(|item| sanitize_terminal(&item.reason))
+            .map(|item| render_untrusted(&item.reason))
             .collect::<Vec<_>>();
         if !anchors.is_empty() {
             println!("matched: {}", anchors.join(", "));
@@ -444,7 +550,11 @@ fn applies(card: &LoadedCard) -> String {
             .iter()
             .map(|(tool, requirement)| format!("{tool} {requirement}")),
     );
-    sanitize_terminal(&parts.join(" · "))
+    render_untrusted(&parts.join(" · "))
+}
+
+fn render_untrusted(value: &str) -> String {
+    sanitize_terminal(&redact_secrets(value))
 }
 
 const fn risk(value: Risk) -> &'static str {

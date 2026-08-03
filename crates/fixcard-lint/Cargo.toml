@@ -10,10 +10,12 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-fixcard-core = { version = "=0.1.0", path = "../fixcard-core" }
+fixcard-core = { version = "=0.1.0-alpha.1", path = "../fixcard-core" }
 jiff.workspace = true
 regex.workspace = true
 semver.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
