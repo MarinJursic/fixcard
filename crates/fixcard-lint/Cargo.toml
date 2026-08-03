@@ -1,0 +1,21 @@
+[package]
+name = "fixcard-lint"
+description = "Safety, secret, schema, and lifecycle diagnostics for Fixcard"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fixcard-core = { path = "../fixcard-core" }
+jiff.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+

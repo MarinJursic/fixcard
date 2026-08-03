@@ -1,0 +1,34 @@
+[package]
+name = "fixcard"
+description = "Repository-owned, human-verified memory for recurring development failures"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "fixcard"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+console.workspace = true
+dialoguer.workspace = true
+fixcard-core = { path = "../fixcard-core" }
+fixcard-git = { path = "../fixcard-git" }
+fixcard-lint = { path = "../fixcard-lint" }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
