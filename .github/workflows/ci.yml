@@ -64,6 +64,12 @@ jobs:
         run: rustup show active-toolchain
       - name: Test workspace
         run: cargo test --workspace --all-features --locked
+      - name: Build optimized binary for terminal safety
+        if: runner.os == 'macOS'
+        run: cargo build --release -p fixcard --locked
+      - name: Check macOS terminal restoration
+        if: runner.os == 'macOS'
+        run: python3 scripts/check_terminal_restore.py target/release/fixcard
 
   msrv:
     name: Minimum supported Rust 1.85

@@ -32,7 +32,8 @@ worksheets, and the public aggregate-report structure.
   reference runner;
 - optimized process startup is gated below the 75 ms p95 target;
 - installed-`fix` pseudo-terminal regressions reject hidden and split prompt
-  terminals, stress SIGTERM during startup, and verify terminal state is restored;
+  terminals, stress SIGTERM during startup, and verify canonical echo restoration
+  on hosted Linux and macOS;
 - dependencies are locked, audited, policy-checked, and reviewed;
 - third-party CI actions are commit-pinned and release archives are extracted
   and smoke-tested before publication.
