@@ -12,6 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 readme = "../../README.md"
 publish = false
+default-run = "fixcard"
 
 [[bin]]
 name = "fixcard"
