@@ -27,14 +27,15 @@ After an ordinary command fails, type only `fix` and paste the failure:
 
 ```console
 $ fix
-Paste failure text, then press Enter, then Ctrl-D. It is used once and not saved.
-ERR_PNPM_OUTDATED_LOCKFILE
+Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. Input is hidden, used once, and not saved.
 ```
 
-On Windows, press Enter, Ctrl-Z, then Enter. Pressing Enter before the EOF key
-ensures that one documented EOF action finishes even when the pasted text had
-no final newline. Fixcard bounds the input to 1 MiB, searches it locally, and
-does not persist it. A standalone process cannot
+Paste the failure, press Enter, then type the displayed completion token on its
+own line and press Enter. The random token changes on every invocation and the
+same flow works on Windows. Fixcard reads in raw terminal mode, so pasted
+control characters cannot end input and reach the shell. Input is hidden,
+bounded to 1 MiB, searched locally, and not persisted; oversized text is
+discarded until the token arrives. A standalone process cannot
 portably recover output printed before it started, so this explicit paste is
 the shortest honest after-the-fact workflow: no scrollback, clipboard, or
 history scraping and no silent rerun.

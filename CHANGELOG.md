@@ -20,9 +20,10 @@ candidate until the documented product-validation gates pass.
 ### Safety changes
 
 - Keep interactive failure text in memory only, enforce the existing 1 MiB
-  query limit, drain oversized terminal pastes through EOF before rejecting
-  them, reject empty input, and explain the reliable platform-specific EOF
-  sequence.
+  query limit, and reject empty input. A raw terminal reader with a random,
+  per-invocation completion token treats pasted control bytes as data and
+  discards oversized input until the safe frame closes, preventing unread
+  paste tails from reaching the caller's shell.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

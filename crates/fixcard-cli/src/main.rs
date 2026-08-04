@@ -549,18 +549,6 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
 }
 
 fn find(repository: Option<&Repository>, args: &FindArgs) -> Result<ExitCode> {
-    if args.paste && io::stdin().is_terminal() {
-        let end = if cfg!(windows) {
-            "press Enter, Ctrl-Z, then Enter"
-        } else {
-            "press Enter, then Ctrl-D"
-        };
-        writeln!(
-            io::stderr().lock(),
-            "Paste failure text, then {end}. It is used once and not saved."
-        )
-        .context("cannot write paste instructions")?;
-    }
     let query = read_query(&args.query, args.paste)?;
     find_query(repository, args, &query)
 }
@@ -799,25 +787,134 @@ fn read_query(arguments: &[String], read_terminal: bool) -> Result<String> {
             "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
         )
     }
-    let bytes = read_bounded_query(io::stdin().lock(), terminal)?;
+    let bytes = if terminal {
+        read_terminal_query()?
+    } else {
+        read_bounded_query(io::stdin().lock())?
+    };
     decode_query(bytes)
 }
 
-fn read_bounded_query(mut reader: impl Read, drain_oversized: bool) -> Result<Vec<u8>> {
+fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
-        .by_ref()
         .take(u64::try_from(MAX_QUERY_BYTES + 1).unwrap_or(u64::MAX))
         .read_to_end(&mut bytes)
         .context("cannot read failure text from standard input")?;
     if bytes.len() > MAX_QUERY_BYTES {
-        if drain_oversized {
-            io::copy(&mut reader, &mut io::sink())
-                .context("cannot discard oversized failure text from standard input")?;
-        }
         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
     }
     Ok(bytes)
+}
+
+fn read_terminal_query() -> Result<Vec<u8>> {
+    let token = completion_token()?;
+    let mut raw_mode = RawModeGuard::enable()?;
+    writeln!(
+        io::stderr().lock(),
+        "Paste failure text, press Enter, type `{token}`, then press Enter. Input is hidden, used once, and not saved."
+    )
+    .context("cannot write paste instructions")?;
+
+    let result = read_framed_terminal_query(io::stdin().lock(), &token);
+    raw_mode.restore()?;
+    result
+}
+
+fn completion_token() -> Result<String> {
+    const ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+    let mut random = [0_u8; 8];
+    getrandom::fill(&mut random)
+        .map_err(|error| anyhow!("cannot generate a secure paste completion token: {error}"))?;
+    let value = random
+        .into_iter()
+        .fold(0_u64, |value, byte| (value << 8) | u64::from(byte));
+    let mut token = String::from("END-");
+    for shift in (0_u32..13).rev() {
+        let index = u8::try_from((value >> (shift * 5)) & 0x1f)
+            .map(usize::from)
+            .context("completion-token index is out of range")?;
+        token.push(char::from(ALPHABET[index]));
+    }
+    Ok(token)
+}
+
+fn read_framed_terminal_query(mut reader: impl Read, token: &str) -> Result<Vec<u8>> {
+    let token = token.as_bytes();
+    let mut query = Vec::new();
+    let mut oversized = false;
+    let mut line_prefix = Vec::with_capacity(token.len());
+    let mut line_matches = true;
+    let mut buffer = [0_u8; 8 * 1024];
+
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .context("cannot read failure text from the terminal")?;
+        if read == 0 {
+            bail!("terminal closed before the paste completion token was entered")
+        }
+        for &byte in &buffer[..read] {
+            if matches!(byte, b'\r' | b'\n') {
+                if line_matches && line_prefix == token {
+                    if oversized {
+                        bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
+                    }
+                    return Ok(query);
+                }
+                append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                append_query_bytes(&mut query, &[byte], &mut oversized);
+                line_prefix.clear();
+                line_matches = true;
+            } else if line_matches {
+                let position = line_prefix.len();
+                if token.get(position) == Some(&byte) {
+                    line_prefix.push(byte);
+                } else {
+                    append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                    append_query_bytes(&mut query, &[byte], &mut oversized);
+                    line_prefix.clear();
+                    line_matches = false;
+                }
+            } else {
+                append_query_bytes(&mut query, &[byte], &mut oversized);
+            }
+        }
+    }
+}
+
+fn append_query_bytes(query: &mut Vec<u8>, bytes: &[u8], oversized: &mut bool) {
+    let available = MAX_QUERY_BYTES.saturating_sub(query.len());
+    let keep = available.min(bytes.len());
+    query.extend_from_slice(&bytes[..keep]);
+    *oversized |= keep < bytes.len();
+}
+
+struct RawModeGuard {
+    active: bool,
+}
+
+impl RawModeGuard {
+    fn enable() -> Result<Self> {
+        crossterm::terminal::enable_raw_mode().context("cannot enable safe terminal paste mode")?;
+        Ok(Self { active: true })
+    }
+
+    fn restore(&mut self) -> Result<()> {
+        crossterm::terminal::disable_raw_mode()
+            .context("cannot restore the terminal after reading failure text")?;
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+    }
 }
 
 fn decode_query(bytes: Vec<u8>) -> Result<String> {
@@ -998,15 +1095,26 @@ const fn normalized_arch(value: &str) -> &str {
 mod tests {
     use std::io::{Cursor, Seek};
 
-    use super::{MAX_QUERY_BYTES, read_bounded_query};
+    use super::{MAX_QUERY_BYTES, read_bounded_query, read_framed_terminal_query};
 
     #[test]
-    fn oversized_terminal_query_is_drained_before_the_error() -> anyhow::Result<()> {
-        let input = vec![b'x'; MAX_QUERY_BYTES + 128];
+    fn framed_terminal_query_treats_eot_and_following_lines_as_input() -> anyhow::Result<()> {
+        let input = b"SAFE\n\x04echo PWNED\nEND-ABCDEFGHJKLMN\r";
+
+        let query = read_framed_terminal_query(Cursor::new(input), "END-ABCDEFGHJKLMN")?;
+
+        assert_eq!(query, b"SAFE\n\x04echo PWNED\n");
+        Ok(())
+    }
+
+    #[test]
+    fn framed_terminal_query_discards_oversize_input_until_its_token() -> anyhow::Result<()> {
+        let mut input = vec![b'x'; MAX_QUERY_BYTES + 128];
+        input.extend_from_slice(b"\nEND-ABCDEFGHJKLMN\r");
         let input_len = u64::try_from(input.len())?;
         let mut reader = Cursor::new(input);
 
-        let result = read_bounded_query(&mut reader, true);
+        let result = read_framed_terminal_query(&mut reader, "END-ABCDEFGHJKLMN");
 
         assert!(result.is_err());
         assert_eq!(reader.stream_position()?, input_len);
@@ -1018,7 +1126,7 @@ mod tests {
         let input = vec![b'x'; MAX_QUERY_BYTES + 128];
         let mut reader = Cursor::new(input);
 
-        let result = read_bounded_query(&mut reader, false);
+        let result = read_bounded_query(&mut reader);
 
         assert!(result.is_err());
         assert_eq!(

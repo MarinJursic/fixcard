@@ -26,10 +26,12 @@ path = "src/fix.rs"
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
+crossterm.workspace = true
 dialoguer.workspace = true
 fixcard-core = { version = "=1.0.0-rc.5", path = "../fixcard-core" }
 fixcard-git = { version = "=1.0.0-rc.5", path = "../fixcard-git" }
 fixcard-lint = { version = "=1.0.0-rc.5", path = "../fixcard-lint" }
+getrandom.workspace = true
 jiff.workspace = true
 semver.workspace = true
 serde_yaml_ng.workspace = true

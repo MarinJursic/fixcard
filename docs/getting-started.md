@@ -9,13 +9,15 @@ After a command has already failed, run only `fix`:
 
 ```console
 $ fix
-Paste failure text, then press Enter, then Ctrl-D. It is used once and not saved.
-ERR_EXAMPLE stable diagnostic fragment
+Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. Input is hidden, used once, and not saved.
 ```
 
-On Windows, press Enter, Ctrl-Z, then Enter. Enter commits any unterminated
-pasted line before the EOF key, so the documented sequence always completes.
-Input is bounded to 1 MiB, used for one local lookup, and not persisted.
+Paste the failure, press Enter, type the displayed token on its own line, and
+press Enter. The token is randomly generated for that invocation. Input is
+hidden while Fixcard's raw terminal reader is active, so pasted control bytes
+cannot terminate the read and escape to the shell. The same flow works on
+Windows. Input is bounded to 1 MiB, used for one local lookup, and not persisted;
+oversized text is discarded until the completion token arrives.
 
 A standalone process cannot portably recover earlier terminal output. Fixcard
 therefore asks for an explicit paste instead of inspecting clipboard contents,
