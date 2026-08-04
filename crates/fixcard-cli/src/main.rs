@@ -108,10 +108,17 @@ enum IntegrationShell {
 }
 
 #[derive(Clone, Debug, Default, Args)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent lookup display and input switches map directly to CLI flags"
+)]
 struct FindArgs {
     /// Failure text. When omitted, read standard input.
     #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
     query: Vec<String>,
+    /// Prompt for a one-shot failure paste when standard input is a terminal.
+    #[arg(long)]
+    paste: bool,
     /// Include weak candidates and their caution states.
     #[arg(long)]
     all: bool,
@@ -276,13 +283,13 @@ fn shell_init(shell: Option<IntegrationShell>) -> Result<ExitCode> {
     })?;
     let source = match shell {
         IntegrationShell::Bash | IntegrationShell::Zsh => {
-            "fix() { if [ \"$#\" -eq 0 ]; then command fixcard; else command fixcard run -- \"$@\"; fi; }"
+            "fix() { if [ \"$#\" -eq 0 ]; then command fixcard fix --paste; else command fixcard run -- \"$@\"; fi; }"
         }
         IntegrationShell::Fish => {
-            "function fix; if test (count $argv) -eq 0; command fixcard; else; command fixcard run -- $argv; end; end"
+            "function fix; if test (count $argv) -eq 0; command fixcard fix --paste; else; command fixcard run -- $argv; end; end"
         }
         IntegrationShell::PowerShell => {
-            "function fix { if ($args.Count -eq 0) { & fixcard } else { & fixcard run -- @args } }"
+            "function fix { if ($args.Count -eq 0) { & fixcard fix --paste } else { & fixcard run -- @args } }"
         }
     };
     outputln!("{source}")?;
@@ -363,6 +370,7 @@ fn status(repository: Option<&Repository>) -> Result<ExitCode> {
             .count()
     )?;
     outputln!("Quick start:")?;
+    outputln!("  fix                    # paste a failure for one-shot lookup")?;
     outputln!("  fix PROGRAM [ARGS...]  # run once and look up guidance after failure")?;
     outputln!("  existing-output | fix  # look up output you already have")?;
     outputln!("  fixcard save           # preserve a proven resolution")?;
@@ -541,7 +549,19 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
 }
 
 fn find(repository: Option<&Repository>, args: &FindArgs) -> Result<ExitCode> {
-    let query = read_query(&args.query)?;
+    if args.paste && io::stdin().is_terminal() {
+        let end = if cfg!(windows) {
+            "Ctrl-Z, then Enter"
+        } else {
+            "Ctrl-D"
+        };
+        writeln!(
+            io::stderr().lock(),
+            "Paste failure text, then press {end}. It is used once and not saved."
+        )
+        .context("cannot write paste instructions")?;
+    }
+    let query = read_query(&args.query, args.paste)?;
     find_query(repository, args, &query)
 }
 
@@ -765,7 +785,7 @@ fn user_cards_path() -> Result<PathBuf> {
         .ok_or_else(|| anyhow!("cannot determine the per-user Fixcard data directory"))
 }
 
-fn read_query(arguments: &[String]) -> Result<String> {
+fn read_query(arguments: &[String], read_terminal: bool) -> Result<String> {
     if !arguments.is_empty() {
         let query = arguments.join(" ");
         if query.len() > MAX_QUERY_BYTES {
@@ -773,7 +793,7 @@ fn read_query(arguments: &[String]) -> Result<String> {
         }
         return Ok(query);
     }
-    if io::stdin().is_terminal() {
+    if io::stdin().is_terminal() && !read_terminal {
         bail!(
             "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
         )
@@ -787,7 +807,11 @@ fn read_query(arguments: &[String]) -> Result<String> {
     if bytes.len() > MAX_QUERY_BYTES {
         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
     }
-    String::from_utf8(bytes).context("failure text must be valid UTF-8")
+    let query = String::from_utf8(bytes).context("failure text must be valid UTF-8")?;
+    if query.trim().is_empty() {
+        bail!("no failure text received")
+    }
+    Ok(query)
 }
 
 fn environment(values: &[String]) -> Result<Environment> {

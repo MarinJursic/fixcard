@@ -26,6 +26,7 @@ Network services are outside the runtime data flow.
 | Stale fix presented as current | `last_verified`, configurable staleness warning, retired/superseded lifecycle |
 | Symlink or path traversal | stable ID validation, reject card-directory symlinks, ignore symlinked card files, no path construction from an unvalidated ID |
 | Resource exhaustion | bounded entries, cards, aggregate and per-card bytes, anchors, extensions, queries, output tails, and diagnostics; linear-time regexes only |
+| Accidental collection of prior terminal context | bare `fix` reads only an explicit bounded paste; no clipboard, scrollback, history, arbitrary-log, or background capture |
 | Git option or command injection | fixed Git argv, `--` before paths, no shell invocation, non-interactive environment |
 | Shell injection through `run --` | direct argv spawn without a shell; refuse Windows batch formats; card text never becomes argv |
 | One malformed or colliding card hides valid cards | per-card quarantine during lookup, scoped duplicate addressing, strict lint remains separate |
@@ -43,6 +44,8 @@ status under recorded conditions.
 
 - No card content is executed.
 - `run --` executes only user-supplied argv and preserves a failing child status.
+- Interactive paste reads only standard input, is bounded to 1 MiB, and is not
+  persisted.
 - No runtime network request is made.
 - Team files are not written without explicit `--team` intent and preview.
 - A finding that resembles a secret blocks team-save by default.

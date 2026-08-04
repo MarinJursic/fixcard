@@ -3,7 +3,25 @@
 Fixcard can recall repository, clone-private, and user-global knowledge. It also
 works outside Git when user-global cards are available.
 
-## 1. Capture a failure safely
+## 1. Paste a failure safely
+
+After a command has already failed, run only `fix`:
+
+```console
+$ fix
+Paste failure text, then press Ctrl-D. It is used once and not saved.
+ERR_EXAMPLE stable diagnostic fragment
+```
+
+On Windows, finish the paste with Ctrl-Z followed by Enter. Input is bounded to
+1 MiB, used for one local lookup, and not persisted.
+
+A standalone process cannot portably recover earlier terminal output. Fixcard
+therefore asks for an explicit paste instead of inspecting clipboard contents,
+terminal scrollback, shell history, or arbitrary logs, and it never silently
+reruns the previous command.
+
+## 2. Capture an anticipated command safely
 
 The shortest reliable workflow is to let the installed `fix` companion observe
 an explicit command:
@@ -28,12 +46,11 @@ It also accepts existing output and needs no shell activation:
 journalctl -u example --no-pager | fix
 ```
 
-With no arguments it delegates to bare `fixcard`: piped text is searched, while
-an interactive terminal shows storage status and next steps. The compatibility
-shell function is documented in the
+With piped input and no arguments it performs the same local lookup without an
+interactive prompt. The compatibility shell function is documented in the
 [installation guide](installation.md#shell-completion-and-compatibility).
 
-## 2. Look up text you already have
+## 3. Look up text you already have
 
 Pass stable error fragments as arguments:
 
@@ -51,11 +68,7 @@ Avoid `some-command 2>&1 | fixcard fix` as a command wrapper: an ordinary shell
 pipeline can report Fixcard's status instead of the failing command's status.
 Use `fixcard run -- some-command` for that case.
 
-Fixcard reads only supplied text. It does not inspect clipboard contents,
-terminal scrollback, shell history, or arbitrary logs, and it never silently
-reruns a previous command.
-
-## 3. Read the result before acting
+## 4. Read the result before acting
 
 A strong result includes the complete resolution in the same invocation. It
 also shows the origin, declared risk, applicability, evidence date, and recorded
@@ -82,7 +95,7 @@ weak candidates:
 fixcard fix --explain --all ERR_EXAMPLE
 ```
 
-## 4. Save a fix you proved
+## 5. Save a fix you proved
 
 After deliberately solving and validating a real failure:
 
@@ -119,7 +132,7 @@ git commit
 Global scope is not a substitute for team scope. Use it for truly portable
 personal knowledge; use `.fixcards/` when repository conditions matter.
 
-## 5. Understand provenance labels
+## 6. Understand provenance labels
 
 - `repository-committed` means the exact parsed file bytes match the blob at
   `HEAD`; it does not claim human review, a trusted author, or a trusted remote.

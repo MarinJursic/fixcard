@@ -10,6 +10,14 @@ expected result.
 
 Never. Commands and validation evidence are inert text for human review.
 
+## Can bare `fix` recover the command that just failed?
+
+It cannot recover output printed before it started because shells expose no
+portable, privacy-safe API for prior terminal output. Bare `fix` instead opens
+a one-shot paste prompt. The supplied text is bounded, searched locally, and
+not saved. Fixcard never scrapes scrollback, clipboard contents, or history and
+never reruns the previous command silently.
+
 ## Why not use shell history?
 
 History remembers what was typed, not why it worked, which repository it was

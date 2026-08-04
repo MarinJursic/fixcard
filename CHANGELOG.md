@@ -7,6 +7,21 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+## [1.0.0-rc.5] - 2026-08-04
+
+### Interactive lookup changes
+
+- Make bare `fix` a bounded one-shot paste flow so an ordinary failure can be
+  looked up without anticipating it, supplying command syntax, activating a
+  shell function, or granting clipboard, history, or scrollback access.
+- Align generated Bash, Zsh, Fish, and PowerShell compatibility functions with
+  the installed companion's interactive paste behavior.
+
+### Safety changes
+
+- Keep interactive failure text in memory only, enforce the existing 1 MiB
+  query limit, reject empty input, and explain the platform-specific EOF key.
+
 ## [1.0.0-rc.4] - 2026-08-04
 
 ### Usability additions
@@ -117,7 +132,8 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...HEAD
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.5...HEAD
+[1.0.0-rc.5]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...v1.0.0-rc.4
 [1.0.0-rc.3]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.1...v1.0.0-rc.2

@@ -14,7 +14,7 @@
 
 ## Validation before 1.0
 
-The production-v1 implementation is available as `1.0.0-rc.4`. Stable release
+The production-v1 implementation is available as `1.0.0-rc.5`. Stable release
 promotion remains intentionally blocked on evidence rather than code volume:
 
 - assemble at least 100 permissioned, sanitized real failure/resolution pairs;

@@ -2,6 +2,7 @@
 
 use std::env;
 use std::ffi::OsString;
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitStatus};
 
@@ -11,14 +12,14 @@ use fixcard_core::sanitize_terminal;
 const HELP: &str = "Run a command once and recall a proven Fixcard if it fails.
 
 Usage:
+  fix
   fix PROGRAM [ARGS...]
   existing-output | fix
-  fix
 
-With arguments, fix directly executes the supplied program and argv through
-`fixcard run --`. With piped input and no arguments, it performs a lookup.
-Bare fix in a terminal shows status and next steps. It never invokes a shell
-or executes text from a card.
+Bare fix prompts for failure text to paste. With arguments, fix directly
+executes the supplied program and argv through `fixcard run --`. With piped
+input and no arguments, it performs a lookup. It never invokes a shell,
+recovers earlier terminal output, or executes text from a card.
 ";
 
 fn main() {
@@ -50,13 +51,25 @@ fn run() -> Result<i32> {
 
     let fixcard = sibling_fixcard()?;
     let mut command = Command::new(&fixcard);
-    if !arguments.is_empty() {
-        command.arg("run").arg("--").args(arguments);
-    }
+    command.args(companion_arguments(&arguments, io::stdin().is_terminal()));
     let status = command
         .status()
         .with_context(|| format!("cannot start companion `{}`", fixcard.display()))?;
     Ok(process_exit_code(status))
+}
+
+fn companion_arguments(arguments: &[OsString], stdin_is_terminal: bool) -> Vec<OsString> {
+    if arguments.is_empty() {
+        return if stdin_is_terminal {
+            vec![OsString::from("fix"), OsString::from("--paste")]
+        } else {
+            Vec::new()
+        };
+    }
+    std::iter::once(OsString::from("run"))
+        .chain(std::iter::once(OsString::from("--")))
+        .chain(arguments.iter().cloned())
+        .collect()
 }
 
 fn sibling_fixcard() -> Result<PathBuf> {
@@ -115,5 +128,23 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("companion"));
         assert!(message.contains("reinstall Fixcard"));
+    }
+
+    #[test]
+    fn dispatches_terminal_paste_pipe_lookup_and_explicit_run() {
+        assert_eq!(
+            companion_arguments(&[], true),
+            [OsString::from("fix"), OsString::from("--paste")]
+        );
+        assert!(companion_arguments(&[], false).is_empty());
+        assert_eq!(
+            companion_arguments(&[OsString::from("cargo"), OsString::from("test")], true),
+            [
+                OsString::from("run"),
+                OsString::from("--"),
+                OsString::from("cargo"),
+                OsString::from("test")
+            ]
+        );
     }
 }

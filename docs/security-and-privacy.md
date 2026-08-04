@@ -12,7 +12,8 @@ card can publish its contents according to the repository's remotes.
 
 ## What is stored
 
-- Queries are held in memory for the lookup and are not persisted.
+- Queries, including bare-`fix` interactive pastes, are bounded to 1 MiB, held
+  in memory for one lookup, and not persisted.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.
@@ -41,6 +42,8 @@ through a command shell.
 - terminal escape and unsafe control characters are stripped before display;
 - semantic-version conflicts and negative conditions lower trust rather than
   being hidden by textual similarity.
+- interactive paste reads only explicit terminal input; it never reads the
+  clipboard, terminal scrollback, shell history, or arbitrary logs.
 - malformed cards are quarantined during lookup with prominent bounded
   diagnostics; strict `lint` still fails.
 

@@ -5,7 +5,8 @@
 [![MSRV: 1.85](https://img.shields.io/badge/MSRV-1.85-DEA584.svg)](https://www.rust-lang.org/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Run a command. If it fails, get the complete fix your team already proved.**
+**A command failed? Type `fix`, paste the failure, and get the complete fix
+your team already proved.**
 
 Fixcard is a local command-line tool and open Markdown format for recurring
 development failures. It matches literal evidence, shows the whole recorded
@@ -22,10 +23,24 @@ card. A match is a suggested resolution, not an automatic fix.
 
 ## The shortest path
 
-Wrap a command whose failure may already be known:
+After an ordinary command fails, type only `fix` and paste the failure:
 
 ```console
-$ fixcard run -- pnpm install --frozen-lockfile
+$ fix
+Paste failure text, then press Ctrl-D. It is used once and not saved.
+ERR_PNPM_OUTDATED_LOCKFILE
+```
+
+Use Ctrl-Z followed by Enter on Windows. Fixcard bounds the input to 1 MiB,
+searches it locally, and does not persist it. A standalone process cannot
+portably recover output printed before it started, so this explicit paste is
+the shortest honest after-the-fact workflow: no scrollback, clipboard, or
+history scraping and no silent rerun.
+
+When a failure is anticipated, let `fix` observe the command directly:
+
+```console
+$ fix pnpm install --frozen-lockfile
 ...the command's normal output...
 ERR_PNPM_OUTDATED_LOCKFILE
 
@@ -48,11 +63,11 @@ This is evidence of a previous resolution, not a guarantee. Review commands
 before running them.
 ```
 
-`run --` executes only the argv supplied after `--`, without a shell. It streams
-the child's stdout and stderr, retains a bounded in-memory tail, performs lookup
-after a failure, and returns the child's original exit code. Fixcard's result is
-written to stderr so the child's stdout stays pipeline-safe. Captured output is
-not persisted.
+This delegates to `fixcard run --`, which executes only the supplied program
+and argv without a shell. It streams the child's stdout and stderr, retains a
+bounded in-memory tail, performs lookup after a failure, and returns the
+child's original exit code. Fixcard's result is written to stderr so the
+child's stdout stays pipeline-safe. Captured output is not persisted.
 
 Already have the error? One invocation is enough:
 
@@ -61,26 +76,22 @@ fixcard fix ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile
 journalctl -u my-service --no-pager | fixcard fix
 ```
 
-A standalone process cannot portably recover output that was printed before it
-started. Fixcard therefore does not scrape terminal scrollback, read the
-clipboard, or silently rerun the previous command.
-
 Supported installs include the literal `fix` companion command:
 
 ```bash
+fix
 fix pnpm install --frozen-lockfile
 journalctl -u my-service --no-pager | fix
 ```
 
-With arguments, the companion is a shorter spelling of
-`fixcard run --`: it runs the command you provide and looks up a known
-resolution if that command fails. With piped input and no arguments, it uses
-Fixcard's direct lookup flow. Bare `fix` in a terminal shows status and setup.
-It locates the sibling `fixcard` executable and directly preserves argv,
-standard streams, and the child exit status without invoking a shell. It does
-not execute card text or pretend it can recover an earlier failure. No shell
-profile or current-session activation is required. The compatibility
-`shell-init` function remains documented in the
+Bare `fix` prompts for the one-shot paste. With arguments, it runs the command
+you provide and looks up a known resolution if that command fails. With piped
+input and no arguments, it uses Fixcard's direct lookup flow. It locates the
+sibling `fixcard` executable and directly preserves argv, standard streams,
+and the child exit status without invoking a shell. It does not execute card
+text or pretend it can recover an earlier failure. No shell profile or
+current-session activation is required. The compatibility `shell-init`
+function remains documented in the
 [installation guide](docs/installation.md#shell-completion-and-compatibility).
 
 ## Save what worked
@@ -139,15 +150,15 @@ or newer:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.4 --locked fixcard
+  --tag v1.0.0-rc.5 --locked fixcard
 ```
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `fix PROGRAM [ARGS...]` / `existing-output \| fix` | Installed short command for explicit capture, piped lookup, or interactive status. |
-| `fixcard` / `fixcard fix [text]` | Show the complete strongest known resolution; reads piped stdin when text is omitted. |
+| `fix` / `fix PROGRAM [ARGS...]` / `output \| fix` | Paste a failure, explicitly capture one command, or look up piped output. |
+| `fixcard` / `fixcard fix [text]` | Show the complete strongest known resolution; reads piped stdin when text is omitted. Use `--paste` for terminal input. |
 | `fixcard run -- PROGRAM [ARGS...]` | Run explicit argv, stream output, and look up a card after failure while preserving status. |
 | `fixcard save [--team\|--global]` | Record a resolution with a minimal reviewed preview. |
 | `fixcard show [scope:]id` | Display one complete inert card and available provenance. |
@@ -178,6 +189,8 @@ cannot hide valid knowledge. `lint` remains strict and fails on bad input.
 - `run --` is deliberately non-PTY capture. Programs may disable color or
   prompts when stdout/stderr are pipes; invoke them directly when a TTY is
   required.
+- Interactive paste is bounded to 1 MiB, held only for the lookup, and never
+  reads the clipboard, scrollback, history, or arbitrary logs.
 
 Read [Security and privacy](docs/security-and-privacy.md) and the formal
 [Threat model](docs/threat-model.md) before using cards from an untrusted

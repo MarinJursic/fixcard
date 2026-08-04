@@ -38,7 +38,7 @@ With the GitHub CLI, download the archive and verification files for a chosen
 version:
 
 ```bash
-version=1.0.0-rc.4
+version=1.0.0-rc.5
 target=aarch64-apple-darwin
 gh release download "v${version}" \
   --repo MarinJursic/fixcard \
@@ -80,7 +80,7 @@ Install Rust 1.85 or newer, then pin the release tag:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.4 --locked fixcard
+  --tag v1.0.0-rc.5 --locked fixcard
 fixcard --version
 fix --version
 ```
@@ -117,9 +117,11 @@ Generate completion definitions without modifying shell configuration:
 fixcard completion zsh
 ```
 
-The installed `fix` companion already provides explicit command capture, piped
-lookup, and interactive status in every shell without profile changes. No
-activation step is required.
+The installed `fix` companion already provides one-shot interactive paste,
+explicit command capture, and piped lookup in every shell without profile
+changes. No activation step is required. Bare `fix` explains how to finish the
+paste with Ctrl-D on Unix or Ctrl-Z followed by Enter on Windows; the input is
+used once and not saved.
 
 For compatibility with an older installation, or when a shell function is
 specifically preferred, generate an equivalent function. In Bash or Zsh:
