@@ -7,14 +7,16 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
-### Unreleased additions
+## [1.0.0-rc.3] - 2026-08-04
+
+### Validation additions
 
 - Coordinator-ready research operations guide, privacy-safe blank study
   templates, fixed denominators, full kill criteria, and CI schema validation.
 - Milestone 0 evidence gate requiring at least 100 permissioned, sanitized real
   failure/resolution pairs before stable promotion.
 
-### Unreleased changes
+### Usability changes
 
 - `shell-init` now infers common shells when its argument is omitted and
   generates one `fix` function for explicit command capture, piped lookup, and
@@ -101,7 +103,8 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/commits/main
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...HEAD
+[1.0.0-rc.3]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.2...v1.0.0-rc.1
 [0.1.0-alpha.2]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
