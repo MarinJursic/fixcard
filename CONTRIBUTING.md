@@ -26,6 +26,11 @@ Behavior changes require tests. Matching claims require sanitized fixtures and
 a stated methodology. Never commit a real secret, internal log, customer name,
 or proprietary failure to the fixture corpus.
 
+Validation evidence follows the [research operations guide](docs/research-operations.md).
+Do not commit completed participant worksheets or alias keys. Submit only the
+public aggregate report, methodology, denominators, missing data, and the
+corresponding update to [validation results](docs/validation-results.md).
+
 ## Contribution accountability
 
 Contributors must be able to explain and maintain submitted changes. Assisted
@@ -35,4 +40,3 @@ The standard is accountability, not how the first draft was produced.
 
 By contributing, you agree that your contribution is licensed under
 Apache-2.0 and that you have the right to submit it.
-

@@ -187,6 +187,7 @@ repository's license and contribution rules.
 - [Card authoring](docs/card-authoring.md)
 - [Matching and confidence](docs/matching.md)
 - [Pre-pilot research protocol](docs/research-study.md)
+- [Research operations guide and templates](docs/research-operations.md)
 - [Release-candidate dogfood program](docs/dogfood.md)
 - [Current validation results](docs/validation-results.md)
 - [Examples](docs/examples.md)

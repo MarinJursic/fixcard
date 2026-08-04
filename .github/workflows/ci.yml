@@ -29,6 +29,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Validate GitHub issue forms
         run: ruby scripts/check_issue_forms.rb
+      - name: Validate research operations kit
+        run: ruby scripts/check_research_kit.rb
       - name: Lint all targets and features
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test all features
@@ -44,7 +46,7 @@ jobs:
       - name: Lint teaching cards
         run: cargo run -q -p fixcard -- lint examples/repository/.fixcards
       - name: Lint Markdown
-        run: npx --yes markdownlint-cli2@0.23.2 'README.md' 'docs/**/*.md' 'examples/**/*.md' '*.md' '#target' '#.git'
+        run: npx --yes markdownlint-cli2@0.23.2 'README.md' 'docs/**/*.md' 'examples/**/*.md' 'research/**/*.md' '*.md' '#target' '#.git'
 
   cross-platform:
     name: Test (${{ matrix.os }})
