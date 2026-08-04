@@ -37,7 +37,7 @@ With the GitHub CLI, download the archive and verification files for a chosen
 version:
 
 ```bash
-version=1.0.0-rc.2
+version=1.0.0-rc.3
 target=aarch64-apple-darwin
 gh release download "v${version}" \
   --repo MarinJursic/fixcard \
@@ -76,7 +76,7 @@ Install Rust 1.85 or newer, then pin the release tag:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.2 --locked fixcard
+  --tag v1.0.0-rc.3 --locked fixcard
 fixcard --version
 ```
 
