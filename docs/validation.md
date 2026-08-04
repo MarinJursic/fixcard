@@ -8,6 +8,10 @@ The non-leading diary and concierge protocols are in
 [Pre-pilot research](research-study.md). Current evidence and missing gates are
 published in [Validation results](validation-results.md).
 
+The [Research operations guide](research-operations.md) supplies neutral
+recruitment language, consent boundaries, fixed denominators, privacy-safe blank
+worksheets, and the public aggregate-report structure.
+
 ## Verified in the repository
 
 - the parser rejects malformed, ambiguous, oversized, and unsupported cards;
@@ -45,6 +49,17 @@ will create cards or that strong matches are relevant in diverse repositories.
 5. The useful niche remains distinct from shell history, docs, and runbooks.
 
 ## Staged study
+
+### Milestone 0 — evidence corpus
+
+Retain at least 100 sanitized real failure/resolution pairs with explicit
+permission, a second-person sanitization review, broad category metadata, and a
+documented access model. Synthetic examples and multiple variants of one real
+incident do not increase the count. Pair contents remain access-controlled
+unless both the participant and repository owner permit publication.
+
+This corpus supports representative matching evaluation; the synthetic
+1,000-card benchmark proves performance only.
 
 ### Stage 1 — diary and interviews
 
@@ -102,6 +117,10 @@ reuse is negligible, strong-match relevance stays below 60% after one focused
 iteration, or safe sharing requires burdensome process. Evidence from synthetic
 incidents, stars, downloads, total card count, or same-day engineering tests
 cannot substitute for these behavioral gates.
+
+The complete ten-item kill-criteria review and fixed denominator definitions are
+in [Research operations](research-operations.md). Every published decision must
+report each criterion rather than silently omitting adverse evidence.
 
 The strongest question is: **did a developer encounter a real failure, receive
 the right repository-owned record at the right moment, and safely resolve the

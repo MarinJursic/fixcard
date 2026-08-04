@@ -16,6 +16,7 @@
 - [Threat model](threat-model.md)
 - [Validation plan](validation.md)
 - [Pre-pilot research protocol](research-study.md)
+- [Research operations guide and templates](research-operations.md)
 - [Release-candidate dogfood program](dogfood.md)
 - [Current validation results](validation-results.md)
 - [Performance methodology](performance.md)

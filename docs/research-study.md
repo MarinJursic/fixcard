@@ -69,3 +69,6 @@ pass/change/stop decision. Do not publish a participant-level table when the
 combination of role, platform, and context could identify someone.
 
 The current status is maintained in [Validation results](validation-results.md).
+The coordinator-ready scripts, consent boundaries, fixed denominators, corpus
+procedure, and blank worksheets are in the
+[Research operations guide](research-operations.md).
