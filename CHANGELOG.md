@@ -20,7 +20,8 @@ candidate until the documented product-validation gates pass.
 ### Safety changes
 
 - Keep interactive failure text in memory only, enforce the existing 1 MiB
-  query limit, reject empty input, and explain the platform-specific EOF key.
+  query limit, reject empty input, and use the same explicit `.` terminator line
+  on every platform.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

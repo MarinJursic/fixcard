@@ -9,12 +9,14 @@ After a command has already failed, run only `fix`:
 
 ```console
 $ fix
-Paste failure text, then press Ctrl-D. It is used once and not saved.
+Paste failure text, then press Enter, type `.`, and press Enter. It is used once and not saved.
 ERR_EXAMPLE stable diagnostic fragment
+.
 ```
 
-On Windows, finish the paste with Ctrl-Z followed by Enter. Input is bounded to
-1 MiB, used for one local lookup, and not persisted.
+The line containing only `.` ends the paste, works the same way on Windows, and
+is not included in the lookup. Input is bounded to 1 MiB, used for one local
+lookup, and not persisted.
 
 A standalone process cannot portably recover earlier terminal output. Fixcard
 therefore asks for an explicit paste instead of inspecting clipboard contents,

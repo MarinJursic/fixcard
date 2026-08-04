@@ -27,12 +27,14 @@ After an ordinary command fails, type only `fix` and paste the failure:
 
 ```console
 $ fix
-Paste failure text, then press Ctrl-D. It is used once and not saved.
+Paste failure text, then press Enter, type `.`, and press Enter. It is used once and not saved.
 ERR_PNPM_OUTDATED_LOCKFILE
+.
 ```
 
-Use Ctrl-Z followed by Enter on Windows. Fixcard bounds the input to 1 MiB,
-searches it locally, and does not persist it. A standalone process cannot
+The line containing only `.` ends the paste and is not included in the lookup.
+This works the same way on Windows. Fixcard bounds the input to 1 MiB, searches
+it locally, and does not persist it. A standalone process cannot
 portably recover output printed before it started, so this explicit paste is
 the shortest honest after-the-fact workflow: no scrollback, clipboard, or
 history scraping and no silent rerun.

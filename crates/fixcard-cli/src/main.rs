@@ -17,7 +17,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -550,14 +550,9 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
 
 fn find(repository: Option<&Repository>, args: &FindArgs) -> Result<ExitCode> {
     if args.paste && io::stdin().is_terminal() {
-        let end = if cfg!(windows) {
-            "Ctrl-Z, then Enter"
-        } else {
-            "Ctrl-D"
-        };
         writeln!(
             io::stderr().lock(),
-            "Paste failure text, then press {end}. It is used once and not saved."
+            "Paste failure text, then press Enter, type `.`, and press Enter. It is used once and not saved."
         )
         .context("cannot write paste instructions")?;
     }
@@ -793,20 +788,57 @@ fn read_query(arguments: &[String], read_terminal: bool) -> Result<String> {
         }
         return Ok(query);
     }
-    if io::stdin().is_terminal() && !read_terminal {
+    let terminal = io::stdin().is_terminal();
+    if terminal && !read_terminal {
         bail!(
             "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
         )
     }
+    let bytes = if terminal {
+        read_terminal_query(io::stdin().lock())?
+    } else {
+        read_bounded_query(io::stdin().lock())?
+    };
+    decode_query(bytes)
+}
+
+fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    io::stdin()
-        .lock()
+    reader
         .take(u64::try_from(MAX_QUERY_BYTES + 1).unwrap_or(u64::MAX))
         .read_to_end(&mut bytes)
         .context("cannot read failure text from standard input")?;
     if bytes.len() > MAX_QUERY_BYTES {
         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
     }
+    Ok(bytes)
+}
+
+fn read_terminal_query(reader: impl BufRead) -> Result<Vec<u8>> {
+    // The extra bytes let a maximum-sized query include the `.` terminator.
+    let mut reader = reader.take(u64::try_from(MAX_QUERY_BYTES + 4).unwrap_or(u64::MAX));
+    let mut bytes = Vec::new();
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let read = reader
+            .read_until(b'\n', &mut line)
+            .context("cannot read failure text from standard input")?;
+        if read == 0 {
+            break;
+        }
+        if matches!(line.as_slice(), b".\n" | b".\r\n" | b".") {
+            break;
+        }
+        if bytes.len().saturating_add(line.len()) > MAX_QUERY_BYTES {
+            bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
+        }
+        bytes.extend_from_slice(&line);
+    }
+    Ok(bytes)
+}
+
+fn decode_query(bytes: Vec<u8>) -> Result<String> {
     let query = String::from_utf8(bytes).context("failure text must be valid UTF-8")?;
     if query.trim().is_empty() {
         bail!("no failure text received")
@@ -977,5 +1009,33 @@ const fn normalized_arch(value: &str) -> &str {
     match value.as_bytes() {
         b"aarch64" => "arm64",
         _ => value,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::{MAX_QUERY_BYTES, decode_query, read_terminal_query};
+
+    #[test]
+    fn terminal_paste_stops_at_dot_line_without_including_it() -> anyhow::Result<()> {
+        let bytes = read_terminal_query(Cursor::new(b"first\nsecond\n.\nignored\n"))?;
+
+        assert_eq!(decode_query(bytes)?, "first\nsecond\n");
+        Ok(())
+    }
+
+    #[test]
+    fn terminal_paste_enforces_the_query_limit() {
+        let input = vec![b'x'; MAX_QUERY_BYTES + 1];
+
+        let result = read_terminal_query(Cursor::new(input));
+
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("safety limit"))
+        );
     }
 }
