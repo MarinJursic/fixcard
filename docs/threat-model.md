@@ -49,7 +49,8 @@ status under recorded conditions.
   persisted. Control bytes remain query data, and oversized input is discarded
   until the frame closes so no tail returns to the shell. Ctrl-C arms a separate
   random cancellation frame instead of exiting with unread input. Catchable
-  Unix termination signals restore terminal mode before being re-raised.
+  Unix termination signals restore terminal mode before being re-raised. A
+  synchronization gate covers the transition into raw mode.
 - No runtime network request is made.
 - Team files are not written without explicit `--team` intent and preview.
 - A finding that resembles a secret blocks team-save by default.

@@ -811,8 +811,18 @@ fn read_terminal_query() -> Result<Vec<u8>> {
     let token = frame_token("END-")?;
     let cancel_token = frame_token("CANCEL-")?;
     #[cfg(unix)]
-    let _signal_restore = TerminationSignalGuard::install()?;
-    let mut raw_mode = RawModeGuard::enable()?;
+    let signal_activation = std::sync::Arc::new(std::sync::Mutex::new(()));
+    #[cfg(unix)]
+    let signal_activation_guard = signal_activation
+        .lock()
+        .map_err(|_| anyhow!("terminal-restoration activation lock is poisoned"))?;
+    #[cfg(unix)]
+    let _signal_restore =
+        TerminationSignalGuard::install(std::sync::Arc::clone(&signal_activation))?;
+    let raw_mode = RawModeGuard::enable();
+    #[cfg(unix)]
+    drop(signal_activation_guard);
+    let mut raw_mode = raw_mode?;
     write!(
         io::stderr().lock(),
         "Paste failure text, press Enter, type `{token}`, then press Enter. To cancel, press Ctrl-C, type `{cancel_token}`, and press Enter. Input is hidden, used once, and not saved.\r\n"
@@ -955,7 +965,7 @@ struct TerminationSignalGuard {
 
 #[cfg(unix)]
 impl TerminationSignalGuard {
-    fn install() -> Result<Self> {
+    fn install(activation: std::sync::Arc<std::sync::Mutex<()>>) -> Result<Self> {
         use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 
         let mut signals = signal_hook::iterator::Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])
@@ -965,6 +975,9 @@ impl TerminationSignalGuard {
             .name(String::from("fixcard-terminal-restore"))
             .spawn(move || {
                 if let Some(signal) = signals.forever().next() {
+                    let _activation_guard = activation
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let _ = crossterm::terminal::disable_raw_mode();
                     let _ = signal_hook::low_level::emulate_default_handler(signal);
                     std::process::exit(128_i32.saturating_add(signal));

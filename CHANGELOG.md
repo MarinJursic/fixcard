@@ -25,7 +25,8 @@ candidate until the documented product-validation gates pass.
   discards oversized input until the safe frame closes, preventing unread
   paste tails from reaching the caller's shell. Ctrl-C arms a separate random
   cancellation token, preserving a safe escape path while raw mode is active;
-  catchable Unix termination signals restore terminal mode before re-raising.
+  catchable Unix termination signals restore terminal mode before re-raising,
+  including signals received during raw-mode activation.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

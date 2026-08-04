@@ -14,6 +14,9 @@ import time
 from pathlib import Path
 
 
+STARTUP_DELAYS_SECONDS = (0.0, 0.0001, 0.0005, 0.001, 0.002)
+
+
 def read_until(fd: int, marker: bytes, timeout_seconds: float) -> bytes:
     deadline = time.monotonic() + timeout_seconds
     output = bytearray()
@@ -27,6 +30,35 @@ def read_until(fd: int, marker: bytes, timeout_seconds: float) -> bytes:
     return bytes(output)
 
 
+def check_startup_termination(binary: Path, delay_seconds: float) -> None:
+    master_fd, slave_fd = pty.openpty()
+    original_mode = termios.tcgetattr(slave_fd)
+    process = subprocess.Popen(
+        [binary, "fix", "--paste"],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    try:
+        if delay_seconds:
+            time.sleep(delay_seconds)
+        process.send_signal(signal.SIGTERM)
+        return_code = process.wait(timeout=5.0)
+        if return_code != -signal.SIGTERM:
+            raise RuntimeError(f"expected SIGTERM exit, got {return_code}")
+        if termios.tcgetattr(slave_fd) != original_mode:
+            raise RuntimeError(
+                f"startup SIGTERM after {delay_seconds}s left the terminal in raw mode"
+            )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: check_terminal_restore.py FIXCARD_BINARY", file=sys.stderr)
@@ -36,6 +68,10 @@ def main() -> int:
         return 2
 
     binary = Path(sys.argv[1]).resolve()
+    for delay_seconds in STARTUP_DELAYS_SECONDS:
+        for _ in range(4):
+            check_startup_termination(binary, delay_seconds)
+
     master_fd, slave_fd = pty.openpty()
     original_mode = termios.tcgetattr(slave_fd)
     process: subprocess.Popen[bytes] | None = None
@@ -69,7 +105,7 @@ def main() -> int:
         os.close(master_fd)
         os.close(slave_fd)
 
-    print("SIGTERM restored the interactive paste pseudo-terminal")
+    print("SIGTERM restored the interactive paste pseudo-terminal during startup and input")
     return 0
 
 
