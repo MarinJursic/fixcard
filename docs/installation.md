@@ -120,8 +120,8 @@ fixcard completion zsh
 The installed `fix` companion already provides one-shot interactive paste,
 explicit command capture, and piped lookup in every shell without profile
 changes. No activation step is required. Bare `fix` explains how to finish the
-paste by entering a line containing only `.`; the input is used once and not
-saved. The same terminator works on Unix and Windows.
+paste with Enter followed by Ctrl-D on Unix, or Enter, Ctrl-Z, then Enter on
+Windows. The input is used once and not saved.
 
 For compatibility with an older installation, or when a shell function is
 specifically preferred, generate an equivalent function. In Bash or Zsh:
