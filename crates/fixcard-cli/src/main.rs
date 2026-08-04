@@ -799,17 +799,22 @@ fn read_query(arguments: &[String], read_terminal: bool) -> Result<String> {
             "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
         )
     }
-    let bytes = read_bounded_query(io::stdin().lock())?;
+    let bytes = read_bounded_query(io::stdin().lock(), terminal)?;
     decode_query(bytes)
 }
 
-fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
+fn read_bounded_query(mut reader: impl Read, drain_oversized: bool) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
+        .by_ref()
         .take(u64::try_from(MAX_QUERY_BYTES + 1).unwrap_or(u64::MAX))
         .read_to_end(&mut bytes)
         .context("cannot read failure text from standard input")?;
     if bytes.len() > MAX_QUERY_BYTES {
+        if drain_oversized {
+            io::copy(&mut reader, &mut io::sink())
+                .context("cannot discard oversized failure text from standard input")?;
+        }
         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
     }
     Ok(bytes)
@@ -986,5 +991,40 @@ const fn normalized_arch(value: &str) -> &str {
     match value.as_bytes() {
         b"aarch64" => "arm64",
         _ => value,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Seek};
+
+    use super::{MAX_QUERY_BYTES, read_bounded_query};
+
+    #[test]
+    fn oversized_terminal_query_is_drained_before_the_error() -> anyhow::Result<()> {
+        let input = vec![b'x'; MAX_QUERY_BYTES + 128];
+        let input_len = u64::try_from(input.len())?;
+        let mut reader = Cursor::new(input);
+
+        let result = read_bounded_query(&mut reader, true);
+
+        assert!(result.is_err());
+        assert_eq!(reader.stream_position()?, input_len);
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_piped_query_fails_without_draining_the_source() -> anyhow::Result<()> {
+        let input = vec![b'x'; MAX_QUERY_BYTES + 128];
+        let mut reader = Cursor::new(input);
+
+        let result = read_bounded_query(&mut reader, false);
+
+        assert!(result.is_err());
+        assert_eq!(
+            reader.stream_position()?,
+            u64::try_from(MAX_QUERY_BYTES + 1)?
+        );
+        Ok(())
     }
 }

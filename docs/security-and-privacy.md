@@ -13,7 +13,9 @@ card can publish its contents according to the repository's remotes.
 ## What is stored
 
 - Queries, including bare-`fix` interactive pastes, are bounded to 1 MiB, held
-  in memory for one lookup, and not persisted.
+  in memory for one lookup, and not persisted. Oversized terminal pastes are
+  discarded through EOF before the error is returned, preventing unread input
+  from reaching the caller's shell.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.
