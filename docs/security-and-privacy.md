@@ -23,6 +23,8 @@ card can publish its contents according to the repository's remotes.
   synchronized so a signal cannot race ahead of the transition into raw mode.
   Interactive paste refuses redirected prompts and, on Unix, prompt terminals
   that differ from the input terminal, so its random framing tokens stay visible.
+  The installed Unix `fix` command uses process replacement, so termination
+  signals reach the process that owns raw terminal mode.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.

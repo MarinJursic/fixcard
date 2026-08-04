@@ -31,11 +31,11 @@ def read_until(fd: int, marker: bytes, timeout_seconds: float) -> bytes:
     return bytes(output)
 
 
-def check_startup_termination(binary: Path, delay_seconds: float) -> None:
+def check_startup_termination(command: list[Path], delay_seconds: float) -> None:
     master_fd, slave_fd = pty.openpty()
     original_mode = termios.tcgetattr(slave_fd)
     process = subprocess.Popen(
-        [binary, "fix", "--paste"],
+        command,
         stdin=slave_fd,
         stdout=slave_fd,
         stderr=slave_fd,
@@ -60,13 +60,13 @@ def check_startup_termination(binary: Path, delay_seconds: float) -> None:
         os.close(slave_fd)
 
 
-def check_hidden_prompt_rejected(binary: Path) -> None:
+def check_hidden_prompt_rejected(command: list[Path]) -> None:
     master_fd, slave_fd = pty.openpty()
     original_mode = termios.tcgetattr(slave_fd)
     try:
         with tempfile.TemporaryFile() as error_file:
             result = subprocess.run(
-                [binary, "fix", "--paste"],
+                command,
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=error_file,
@@ -84,14 +84,14 @@ def check_hidden_prompt_rejected(binary: Path) -> None:
         os.close(slave_fd)
 
 
-def check_split_terminals_rejected(binary: Path) -> None:
+def check_split_terminals_rejected(command: list[Path]) -> None:
     input_master, input_slave = pty.openpty()
     prompt_master, prompt_slave = pty.openpty()
     input_mode = termios.tcgetattr(input_slave)
     prompt_mode = termios.tcgetattr(prompt_slave)
     try:
         result = subprocess.run(
-            [binary, "fix", "--paste"],
+            command,
             stdin=input_slave,
             stdout=prompt_slave,
             stderr=prompt_slave,
@@ -121,18 +121,20 @@ def main() -> int:
         return 2
 
     binary = Path(sys.argv[1]).resolve()
-    check_hidden_prompt_rejected(binary)
-    check_split_terminals_rejected(binary)
+    short_binary = binary.with_name("fix")
+    command = [short_binary]
+    check_hidden_prompt_rejected(command)
+    check_split_terminals_rejected(command)
     for delay_seconds in STARTUP_DELAYS_SECONDS:
         for _ in range(4):
-            check_startup_termination(binary, delay_seconds)
+            check_startup_termination(command, delay_seconds)
 
     master_fd, slave_fd = pty.openpty()
     original_mode = termios.tcgetattr(slave_fd)
     process: subprocess.Popen[bytes] | None = None
     try:
         process = subprocess.Popen(
-            [binary, "fix", "--paste"],
+            command,
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -161,7 +163,7 @@ def main() -> int:
         os.close(slave_fd)
 
     print(
-        "interactive paste rejected hidden prompts and restored its terminal during startup and input"
+        "installed fix rejected hidden prompts and restored its terminal during startup and input"
     )
     return 0
 

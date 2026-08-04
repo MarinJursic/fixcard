@@ -27,7 +27,8 @@ candidate until the documented product-validation gates pass.
   cancellation token, preserving a safe escape path while raw mode is active;
   catchable Unix termination signals restore terminal mode before re-raising,
   including signals received during raw-mode activation. Hidden or split
-  prompt terminals are rejected before raw mode begins.
+  prompt terminals are rejected before raw mode begins. On Unix, the installed
+  `fix` companion replaces itself with `fixcard`, preserving signal delivery.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

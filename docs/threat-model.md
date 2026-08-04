@@ -53,6 +53,8 @@ status under recorded conditions.
   synchronization gate covers the transition into raw mode.
   Redirected prompts and, on Unix, split input/prompt terminals are rejected
   before raw mode so the random completion and cancellation tokens stay visible.
+  The Unix `fix` companion replaces its process with `fixcard`, preventing a
+  wrapper-only termination signal from orphaning the raw-mode owner.
 - No runtime network request is made.
 - Team files are not written without explicit `--team` intent and preview.
 - A finding that resembles a secret blocks team-save by default.

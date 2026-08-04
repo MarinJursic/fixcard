@@ -4,7 +4,7 @@ use std::env;
 use std::ffi::OsString;
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, ExitStatus};
+use std::process::{self, Command};
 
 use anyhow::{Context, Result, bail};
 use fixcard_core::sanitize_terminal;
@@ -52,10 +52,20 @@ fn run() -> Result<i32> {
     let fixcard = sibling_fixcard()?;
     let mut command = Command::new(&fixcard);
     command.args(companion_arguments(&arguments, io::stdin().is_terminal()));
-    let status = command
-        .status()
-        .with_context(|| format!("cannot start companion `{}`", fixcard.display()))?;
-    Ok(process_exit_code(status))
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let error = command.exec();
+        Err(error).with_context(|| format!("cannot replace `fix` with `{}`", fixcard.display()))
+    }
+    #[cfg(not(unix))]
+    {
+        let status = command
+            .status()
+            .with_context(|| format!("cannot start companion `{}`", fixcard.display()))?;
+        Ok(process_exit_code(status))
+    }
 }
 
 fn companion_arguments(arguments: &[OsString], stdin_is_terminal: bool) -> Vec<OsString> {
@@ -96,17 +106,8 @@ fn sibling_fixcard_from(current: &Path) -> Result<PathBuf> {
 }
 
 #[cfg(not(unix))]
-fn process_exit_code(status: ExitStatus) -> i32 {
+fn process_exit_code(status: std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(1)
-}
-
-#[cfg(unix)]
-fn process_exit_code(status: ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-
-    status
-        .code()
-        .unwrap_or_else(|| 128 + status.signal().unwrap_or(1))
 }
 
 #[cfg(test)]
