@@ -16,6 +16,51 @@ from pathlib import Path
 
 
 STARTUP_DELAYS_SECONDS = (0.0, 0.0001, 0.0005, 0.001, 0.002)
+PROMPT_MARKER = b"Input is hidden, used once, and not saved."
+
+
+def normalized_terminal_mode(mode: list[object]) -> list[object]:
+    normalized = mode.copy()
+    # Darwin may set PENDIN while returning from raw to canonical mode. XNU
+    # documents it as a transient driver state bit, not a line-discipline mode.
+    normalized[3] = int(normalized[3]) & ~getattr(termios, "PENDIN", 0)
+    return normalized
+
+
+def assert_terminal_restored(fd: int, original_mode: list[object], context: str) -> None:
+    restored_mode = termios.tcgetattr(fd)
+    if normalized_terminal_mode(restored_mode) != normalized_terminal_mode(original_mode):
+        differences = [
+            index
+            for index, (original, restored) in enumerate(zip(original_mode, restored_mode))
+            if original != restored
+        ]
+        raise RuntimeError(f"{context} changed terminal attributes {differences}")
+
+
+def assert_canonical_echo(master_fd: int, slave_fd: int) -> None:
+    os.set_blocking(master_fd, False)
+    os.set_blocking(slave_fd, False)
+    try:
+        while os.read(master_fd, 4096):
+            pass
+    except BlockingIOError:
+        pass
+
+    probe = b"fixcard-terminal-probe"
+    os.write(master_fd, probe)
+    if select.select([slave_fd], [], [], 0.1)[0]:
+        raise RuntimeError("restored terminal delivered input before a newline")
+    if not select.select([master_fd], [], [], 1.0)[0]:
+        raise RuntimeError("restored terminal did not echo input")
+    if probe not in os.read(master_fd, 4096):
+        raise RuntimeError("restored terminal echo did not contain the probe")
+
+    os.write(master_fd, b"\n")
+    if not select.select([slave_fd], [], [], 1.0)[0]:
+        raise RuntimeError("restored terminal did not deliver a completed line")
+    if os.read(slave_fd, 4096) != probe + b"\n":
+        raise RuntimeError("restored terminal changed the completed input line")
 
 
 def read_until(fd: int, marker: bytes, timeout_seconds: float) -> bytes:
@@ -48,10 +93,9 @@ def check_startup_termination(command: list[Path], delay_seconds: float) -> None
         return_code = process.wait(timeout=5.0)
         if return_code != -signal.SIGTERM:
             raise RuntimeError(f"expected SIGTERM exit, got {return_code}")
-        if termios.tcgetattr(slave_fd) != original_mode:
-            raise RuntimeError(
-                f"startup SIGTERM after {delay_seconds}s left the terminal in raw mode"
-            )
+        assert_terminal_restored(
+            slave_fd, original_mode, f"startup SIGTERM after {delay_seconds}s"
+        )
     finally:
         if process.poll() is None:
             process.kill()
@@ -77,8 +121,7 @@ def check_hidden_prompt_rejected(command: list[Path]) -> None:
             error = error_file.read()
         if result.returncode == 0 or b"run without redirecting standard error" not in error:
             raise RuntimeError(f"hidden prompt was not rejected clearly: {error!r}")
-        if termios.tcgetattr(slave_fd) != original_mode:
-            raise RuntimeError("hidden prompt rejection changed the input terminal mode")
+        assert_terminal_restored(slave_fd, original_mode, "hidden prompt rejection")
     finally:
         os.close(master_fd)
         os.close(slave_fd)
@@ -101,10 +144,8 @@ def check_split_terminals_rejected(command: list[Path]) -> None:
         output = read_until(prompt_master, b"same terminal as standard input", 5.0)
         if result.returncode == 0:
             raise RuntimeError(f"split prompt terminals were accepted: {output!r}")
-        if termios.tcgetattr(input_slave) != input_mode:
-            raise RuntimeError("split prompt rejection changed the input terminal mode")
-        if termios.tcgetattr(prompt_slave) != prompt_mode:
-            raise RuntimeError("split prompt rejection changed the prompt terminal mode")
+        assert_terminal_restored(input_slave, input_mode, "split prompt input rejection")
+        assert_terminal_restored(prompt_slave, prompt_mode, "split prompt output rejection")
     finally:
         os.close(input_master)
         os.close(input_slave)
@@ -140,7 +181,7 @@ def main() -> int:
             stderr=slave_fd,
             close_fds=True,
         )
-        read_until(master_fd, b"Input is hidden, used once, and not saved.", 5.0)
+        read_until(master_fd, PROMPT_MARKER, 5.0)
         raw_mode = termios.tcgetattr(slave_fd)
         if raw_mode == original_mode:
             print("interactive paste did not put the pseudo-terminal in raw mode", file=sys.stderr)
@@ -152,9 +193,8 @@ def main() -> int:
         if return_code != -signal.SIGTERM:
             print(f"expected SIGTERM exit, got {return_code}", file=sys.stderr)
             return 1
-        if termios.tcgetattr(slave_fd) != original_mode:
-            print("interactive paste left the pseudo-terminal in raw mode", file=sys.stderr)
-            return 1
+        assert_terminal_restored(slave_fd, original_mode, "active-input SIGTERM")
+        assert_canonical_echo(master_fd, slave_fd)
     finally:
         if process is not None and process.poll() is None:
             process.kill()
@@ -163,7 +203,7 @@ def main() -> int:
         os.close(slave_fd)
 
     print(
-        "installed fix rejected hidden prompts and restored its terminal during startup and input"
+        "installed fix rejected hidden prompts and restored canonical echo during startup and input"
     )
     return 0
 
