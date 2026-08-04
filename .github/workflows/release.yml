@@ -21,26 +21,32 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             executable: fixcard
+            fix_executable: fix
             format: tar
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
             executable: fixcard
+            fix_executable: fix
             format: tar
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             executable: fixcard
+            fix_executable: fix
             format: tar
           - os: macos-15-intel
             target: x86_64-apple-darwin
             executable: fixcard
+            fix_executable: fix
             format: tar
           - os: macos-15
             target: aarch64-apple-darwin
             executable: fixcard
+            fix_executable: fix
             format: tar
           - os: windows-2025
             target: x86_64-pc-windows-msvc
             executable: fixcard.exe
+            fix_executable: fix.exe
             format: zip
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -62,7 +68,9 @@ jobs:
       - name: Smoke-test native binary
         if: ${{ !contains(matrix.target, 'apple') || (contains(matrix.target, 'x86_64') && runner.arch == 'X64') || (contains(matrix.target, 'aarch64') && runner.arch == 'ARM64') }}
         shell: bash
-        run: target/${{ matrix.target }}/release/${{ matrix.executable }} --version
+        run: |
+          target/${{ matrix.target }}/release/${{ matrix.executable }} --version
+          target/${{ matrix.target }}/release/${{ matrix.fix_executable }} --version
       - name: Package Unix archive
         if: matrix.format == 'tar'
         shell: bash
@@ -71,6 +79,7 @@ jobs:
           package="fixcard-${version}-${{ matrix.target }}"
           mkdir -p "staging/${package}" dist
           cp "target/${{ matrix.target }}/release/${{ matrix.executable }}" "staging/${package}/"
+          cp "target/${{ matrix.target }}/release/${{ matrix.fix_executable }}" "staging/${package}/"
           cp README.md LICENSE CHANGELOG.md "staging/${package}/"
           tar -czf "dist/${package}.tar.gz" -C staging "${package}"
       - name: Package Windows archive
@@ -81,6 +90,7 @@ jobs:
           $package = "fixcard-$version-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path "staging/$package", dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable }}" "staging/$package/"
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.fix_executable }}" "staging/$package/"
           Copy-Item README.md, LICENSE, CHANGELOG.md "staging/$package/"
           Compress-Archive -Path "staging/$package" -DestinationPath "dist/$package.zip"
       - name: Smoke-test packaged Unix archive
@@ -92,6 +102,8 @@ jobs:
           mkdir smoke
           tar -xzf "dist/${package}.tar.gz" -C smoke
           "smoke/${package}/${{ matrix.executable }}" --version
+          "smoke/${package}/${{ matrix.fix_executable }}" \
+            "smoke/${package}/${{ matrix.executable }}" --version
       - name: Smoke-test packaged Windows archive
         if: matrix.format == 'zip'
         shell: pwsh
@@ -99,7 +111,10 @@ jobs:
           $version = $env:GITHUB_REF_NAME.Substring(1)
           $package = "fixcard-$version-${{ matrix.target }}"
           Expand-Archive "dist/$package.zip" -DestinationPath smoke
-          & "smoke/$package/${{ matrix.executable }}" --version
+          $fixcard = "smoke/$package/${{ matrix.executable }}"
+          $fix = "smoke/$package/${{ matrix.fix_executable }}"
+          & $fixcard --version
+          & $fix $fixcard --version
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-${{ matrix.target }}

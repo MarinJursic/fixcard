@@ -18,8 +18,8 @@ covering more than one ecosystem and both personal and team use where possible.
    [releases page](https://github.com/MarinJursic/fixcard/releases).
 2. Run `fixcard status` and confirm the expected storage paths.
 3. Choose repository, clone-private, or user-global scope deliberately.
-4. Use `fixcard run -- PROGRAM [ARGS...]`, or opt into
-   `fix PROGRAM [ARGS...]` after inspecting `fixcard shell-init <shell>`.
+4. Use the installed `fix PROGRAM [ARGS...]` companion, or its explicit
+   `fixcard run -- PROGRAM [ARGS...]` equivalent.
 5. Do not create synthetic successes. Record normal development incidents.
 
 Before the first incident, record a stable random repository alias, the exact

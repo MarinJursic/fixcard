@@ -10,6 +10,7 @@ Install the architecture-specific, checksum-pinned upstream binary:
 ```bash
 brew install MarinJursic/tap/fixcard
 fixcard --version
+fix --version
 ```
 
 The fully qualified formula name uses Homebrew's formula-scoped trust flow; it
@@ -37,7 +38,7 @@ With the GitHub CLI, download the archive and verification files for a chosen
 version:
 
 ```bash
-version=1.0.0-rc.3
+version=1.0.0-rc.4
 target=aarch64-apple-darwin
 gh release download "v${version}" \
   --repo MarinJursic/fixcard \
@@ -62,12 +63,15 @@ gh attestation verify "$archive" --repo MarinJursic/fixcard
 An attestation identifies the GitHub Actions workflow and source revision that
 produced an artifact. It is not a behavioral security review.
 
-Extract the archive, move `fixcard` (or `fixcard.exe`) to a directory on `PATH`,
-then check it:
+Extract the archive, keep `fixcard` and `fix` together, and move both binaries
+(`fixcard.exe` and `fix.exe` on Windows) to a directory on `PATH`. Then check
+them:
 
 ```bash
 fixcard --version
+fix --version
 fixcard --help
+fix --help
 ```
 
 ## Install from source
@@ -76,8 +80,9 @@ Install Rust 1.85 or newer, then pin the release tag:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.3 --locked fixcard
+  --tag v1.0.0-rc.4 --locked fixcard
 fixcard --version
+fix --version
 ```
 
 `--locked` uses dependency versions committed by the project. Change the tag
@@ -90,6 +95,7 @@ git clone https://github.com/MarinJursic/fixcard.git
 cd fixcard
 cargo build --release --locked
 ./target/release/fixcard --version
+./target/release/fix --version
 ```
 
 The pinned toolchain in `rust-toolchain.toml` is selected automatically.
@@ -103,7 +109,7 @@ The pinned toolchain in `rust-toolchain.toml` is selected automatically.
 `fixcard run --` directly spawns the requested program. On Windows it refuses
 `.bat` and `.cmd` programs because those formats require shell interpretation.
 
-## Optional shell setup
+## Shell completion and compatibility
 
 Generate completion definitions without modifying shell configuration:
 
@@ -111,9 +117,12 @@ Generate completion definitions without modifying shell configuration:
 fixcard completion zsh
 ```
 
-Generate a small function that makes `fix PROGRAM [ARGS...]` equivalent to
-`fixcard run -- PROGRAM [ARGS...]`, while `existing-output | fix` performs a
-direct lookup. In Bash or Zsh:
+The installed `fix` companion already provides explicit command capture, piped
+lookup, and interactive status in every shell without profile changes. No
+activation step is required.
+
+For compatibility with an older installation, or when a shell function is
+specifically preferred, generate an equivalent function. In Bash or Zsh:
 
 ```bash
 fixcard shell-init
@@ -134,9 +143,9 @@ Use the activation syntax for the current shell:
 | PowerShell | `$fixcardInit = & fixcard shell-init powershell; Invoke-Expression $fixcardInit` |
 
 Fixcard never edits profile files. Inspect the generated output before
-activation, and opt in only if the generic function name `fix` does not
-conflict with an existing command. `power-shell` and `pwsh` remain accepted as
-aliases for `powershell`.
+activation. A function shadows the installed companion for that session, so
+opt in only when that is intentional. `power-shell` and `pwsh` remain accepted
+as aliases for `powershell`.
 
 ## Data directories
 
@@ -162,5 +171,6 @@ For a Cargo installation:
 cargo uninstall fixcard
 ```
 
-For an archive installation, remove the installed binary. Uninstalling never
-deletes cards. Inspect and remove each storage directory separately if desired.
+For an archive installation, remove the installed `fixcard` and `fix` binaries.
+Uninstalling never deletes cards. Inspect and remove each storage directory
+separately if desired.
