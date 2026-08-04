@@ -65,16 +65,24 @@ A standalone process cannot portably recover output that was printed before it
 started. Fixcard therefore does not scrape terminal scrollback, read the
 clipboard, or silently rerun the previous command.
 
-If you want the literal `fix` command, opt in for the current shell session:
+If you want the literal `fix` command, opt in for the current Bash or Zsh
+session:
 
 ```bash
-eval "$(fixcard shell-init zsh)"
+eval "$(fixcard shell-init)"
 fix pnpm install --frozen-lockfile
+journalctl -u my-service --no-pager | fix
 ```
 
-The generated function is only a shorter spelling of `fixcard run --`: it runs
-the command you provide and looks up a known resolution if that command fails.
+With arguments, the generated function is a shorter spelling of
+`fixcard run --`: it runs the command you provide and looks up a known
+resolution if that command fails. With piped input and no arguments, it uses
+Fixcard's direct lookup flow. Bare `fix` in a terminal shows status and setup.
 It does not execute card text or pretend it can recover an earlier failure.
+When the shell argument is omitted, Fixcard infers Bash, Zsh, Fish, or
+PowerShell from `SHELL`; pass the shell explicitly if that environment value is
+missing or does not describe the current shell. Activation syntax differs by
+shell.
 Shell-specific setup for Bash, Fish, and PowerShell is in the
 [installation guide](docs/installation.md#optional-shell-setup).
 
@@ -146,7 +154,7 @@ cargo install --git https://github.com/MarinJursic/fixcard \
 | `fixcard show [scope:]id` | Display one complete inert card and available provenance. |
 | `fixcard list` | List available cards using stable scoped references. |
 | `fixcard status` | Show storage paths, repository detection, and card counts. |
-| `fixcard shell-init <shell>` | Print an opt-in `fix` function for explicit command capture. |
+| `fixcard shell-init [shell]` | Print an opt-in `fix` function for explicit command capture or piped lookup. |
 | `fixcard completion <shell>` | Generate shell completion definitions. |
 | `fixcard lint [path]` | Strictly validate schema, anchors, versions, secrets, risk, lifecycle, and staleness. |
 | `fixcard find [text]` | Compatibility name for direct lookup. |

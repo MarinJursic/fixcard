@@ -112,12 +112,17 @@ fixcard completion zsh
 ```
 
 Generate a small function that makes `fix PROGRAM [ARGS...]` equivalent to
-`fixcard run -- PROGRAM [ARGS...]`:
+`fixcard run -- PROGRAM [ARGS...]`, while `existing-output | fix` performs a
+direct lookup. In Bash or Zsh:
 
 ```bash
-fixcard shell-init zsh
-eval "$(fixcard shell-init zsh)"
+fixcard shell-init
+eval "$(fixcard shell-init)"
 ```
+
+With no argument, Fixcard infers Bash, Zsh, Fish, or PowerShell from the
+`SHELL` environment variable. Pass the shell explicitly when detection is
+unavailable or the login shell differs from the current shell.
 
 Use the activation syntax for the current shell:
 
