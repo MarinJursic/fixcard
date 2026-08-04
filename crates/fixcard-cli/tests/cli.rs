@@ -13,7 +13,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use assert_cmd::cargo::cargo_bin_cmd;
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -160,20 +159,6 @@ fn installed_fix_has_its_own_help_and_version() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with("fix 1.0.0-rc."));
-}
-
-#[test]
-fn installed_fix_fails_clearly_without_its_companion() {
-    let directory = TempDir::new().expect("create isolated binary directory");
-    let standalone = directory
-        .path()
-        .join(format!("fix{}", std::env::consts::EXE_SUFFIX));
-    fs::copy(env!("CARGO_BIN_EXE_fix"), &standalone).expect("copy fix executable");
-    Command::new(standalone)
-        .assert()
-        .code(2)
-        .stderr(predicate::str::contains("companion"))
-        .stderr(predicate::str::contains("reinstall Fixcard"));
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use std::env;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitStatus};
 
 use anyhow::{Context, Result, bail};
@@ -61,6 +61,10 @@ fn run() -> Result<i32> {
 
 fn sibling_fixcard() -> Result<PathBuf> {
     let current = env::current_exe().context("cannot locate the installed `fix` executable")?;
+    sibling_fixcard_from(&current)
+}
+
+fn sibling_fixcard_from(current: &Path) -> Result<PathBuf> {
     let directory = current
         .parent()
         .context("installed `fix` executable has no parent directory")?;
@@ -90,4 +94,26 @@ fn process_exit_code(status: ExitStatus) -> i32 {
     status
         .code()
         .unwrap_or_else(|| 128 + status.signal().unwrap_or(1))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "unit-test setup should fail immediately with context"
+    )]
+
+    use super::*;
+
+    #[test]
+    fn missing_companion_fails_with_reinstallation_guidance() {
+        let directory = tempfile::tempdir().expect("create isolated binary directory");
+        let current = directory
+            .path()
+            .join(format!("fix{}", env::consts::EXE_SUFFIX));
+        let error = sibling_fixcard_from(&current).expect_err("companion should be absent");
+        let message = error.to_string();
+        assert!(message.contains("companion"));
+        assert!(message.contains("reinstall Fixcard"));
+    }
 }
