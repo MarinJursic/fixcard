@@ -810,6 +810,8 @@ fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
 fn read_terminal_query() -> Result<Vec<u8>> {
     let token = frame_token("END-")?;
     let cancel_token = frame_token("CANCEL-")?;
+    #[cfg(unix)]
+    let _signal_restore = TerminationSignalGuard::install()?;
     let mut raw_mode = RawModeGuard::enable()?;
     write!(
         io::stderr().lock(),
@@ -941,6 +943,47 @@ impl Drop for RawModeGuard {
     fn drop(&mut self) {
         if self.active {
             let _ = crossterm::terminal::disable_raw_mode();
+        }
+    }
+}
+
+#[cfg(unix)]
+struct TerminationSignalGuard {
+    handle: signal_hook::iterator::Handle,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl TerminationSignalGuard {
+    fn install() -> Result<Self> {
+        use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
+
+        let mut signals = signal_hook::iterator::Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])
+            .context("cannot install terminal-restoration signal handlers")?;
+        let handle = signals.handle();
+        let thread = std::thread::Builder::new()
+            .name(String::from("fixcard-terminal-restore"))
+            .spawn(move || {
+                if let Some(signal) = signals.forever().next() {
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = signal_hook::low_level::emulate_default_handler(signal);
+                    std::process::exit(128_i32.saturating_add(signal));
+                }
+            })
+            .context("cannot start the terminal-restoration signal handler")?;
+        Ok(Self {
+            handle,
+            thread: Some(thread),
+        })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TerminationSignalGuard {
+    fn drop(&mut self) {
+        self.handle.close();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
         }
     }
 }

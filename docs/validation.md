@@ -31,6 +31,8 @@ worksheets, and the public aggregate-report structure.
 - a 1,000-card benchmark is gated below the 100 ms p95 lookup target on the CI
   reference runner;
 - optimized process startup is gated below the 75 ms p95 target;
+- a pseudo-terminal regression test verifies that SIGTERM restores interactive
+  paste terminal state before exit;
 - dependencies are locked, audited, policy-checked, and reviewed;
 - third-party CI actions are commit-pinned and release archives are extracted
   and smoke-tested before publication.

@@ -24,7 +24,8 @@ candidate until the documented product-validation gates pass.
   per-invocation completion token treats pasted control bytes as data and
   discards oversized input until the safe frame closes, preventing unread
   paste tails from reaching the caller's shell. Ctrl-C arms a separate random
-  cancellation token, preserving a safe escape path while raw mode is active.
+  cancellation token, preserving a safe escape path while raw mode is active;
+  catchable Unix termination signals restore terminal mode before re-raising.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

@@ -18,7 +18,8 @@ card can publish its contents according to the repository's remotes.
   so pasted control bytes remain data. Oversized terminal pastes are discarded
   until that token arrives, preventing unread input from reaching the caller's
   shell. Ctrl-C arms a separate random cancellation token rather than returning
-  with potentially unread input.
+  with potentially unread input. A signal relay restores terminal mode before
+  re-raising catchable Unix termination signals such as SIGTERM.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.

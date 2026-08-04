@@ -41,6 +41,8 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps --locked
       - name: Build optimized binary
         run: cargo build --release -p fixcard --locked
+      - name: Check terminal restoration on termination
+        run: python3 scripts/check_terminal_restore.py target/release/fixcard
       - name: Check process startup target
         run: python3 scripts/check_startup.py target/release/fixcard 75
       - name: Lint teaching cards
