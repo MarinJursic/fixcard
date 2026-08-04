@@ -27,7 +27,7 @@ After an ordinary command fails, type only `fix` and paste the failure:
 
 ```console
 $ fix
-Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. Input is hidden, used once, and not saved.
+Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. To cancel, press Ctrl-C, type `CANCEL-4H8N2W5D7S9KF`, and press Enter. Input is hidden, used once, and not saved.
 ```
 
 Paste the failure, press Enter, then type the displayed completion token on its
@@ -39,6 +39,10 @@ discarded until the token arrives. A standalone process cannot
 portably recover output printed before it started, so this explicit paste is
 the shortest honest after-the-fact workflow: no scrollback, clipboard, or
 history scraping and no silent rerun.
+
+Raw mode makes Ctrl-C ordinary input. To cancel without letting unread paste
+text reach the shell, press Ctrl-C and enter the separate random `CANCEL-...`
+token shown in the prompt.
 
 When a failure is anticipated, let `fix` observe the command directly:
 

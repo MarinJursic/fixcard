@@ -9,7 +9,7 @@ After a command has already failed, run only `fix`:
 
 ```console
 $ fix
-Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. Input is hidden, used once, and not saved.
+Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. To cancel, press Ctrl-C, type `CANCEL-4H8N2W5D7S9KF`, and press Enter. Input is hidden, used once, and not saved.
 ```
 
 Paste the failure, press Enter, type the displayed token on its own line, and
@@ -18,6 +18,10 @@ hidden while Fixcard's raw terminal reader is active, so pasted control bytes
 cannot terminate the read and escape to the shell. The same flow works on
 Windows. Input is bounded to 1 MiB, used for one local lookup, and not persisted;
 oversized text is discarded until the completion token arrives.
+
+Because raw mode treats Ctrl-C as data, cancellation is also framed safely:
+press Ctrl-C, type the separately displayed random `CANCEL-...` token, and press
+Enter. This consumes any pending paste instead of returning it to the shell.
 
 A standalone process cannot portably recover earlier terminal output. Fixcard
 therefore asks for an explicit paste instead of inspecting clipboard contents,

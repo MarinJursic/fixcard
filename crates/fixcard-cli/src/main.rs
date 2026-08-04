@@ -808,20 +808,24 @@ fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
 }
 
 fn read_terminal_query() -> Result<Vec<u8>> {
-    let token = completion_token()?;
+    let token = frame_token("END-")?;
+    let cancel_token = frame_token("CANCEL-")?;
     let mut raw_mode = RawModeGuard::enable()?;
-    writeln!(
+    write!(
         io::stderr().lock(),
-        "Paste failure text, press Enter, type `{token}`, then press Enter. Input is hidden, used once, and not saved."
+        "Paste failure text, press Enter, type `{token}`, then press Enter. To cancel, press Ctrl-C, type `{cancel_token}`, and press Enter. Input is hidden, used once, and not saved.\r\n"
     )
     .context("cannot write paste instructions")?;
 
-    let result = read_framed_terminal_query(io::stdin().lock(), &token);
+    let result = read_framed_terminal_query(io::stdin().lock(), &token, &cancel_token);
     raw_mode.restore()?;
-    result
+    match result? {
+        TerminalQueryFrame::Complete(query) => Ok(query),
+        TerminalQueryFrame::Cancelled => bail!("interactive paste cancelled"),
+    }
 }
 
-fn completion_token() -> Result<String> {
+fn frame_token(prefix: &str) -> Result<String> {
     const ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
     let mut random = [0_u8; 8];
@@ -830,7 +834,7 @@ fn completion_token() -> Result<String> {
     let value = random
         .into_iter()
         .fold(0_u64, |value, byte| (value << 8) | u64::from(byte));
-    let mut token = String::from("END-");
+    let mut token = String::from(prefix);
     for shift in (0_u32..13).rev() {
         let index = u8::try_from((value >> (shift * 5)) & 0x1f)
             .map(usize::from)
@@ -840,12 +844,19 @@ fn completion_token() -> Result<String> {
     Ok(token)
 }
 
-fn read_framed_terminal_query(mut reader: impl Read, token: &str) -> Result<Vec<u8>> {
+fn read_framed_terminal_query(
+    mut reader: impl Read,
+    token: &str,
+    cancel_token: &str,
+) -> Result<TerminalQueryFrame> {
     let token = token.as_bytes();
+    let cancel_token = cancel_token.as_bytes();
     let mut query = Vec::new();
     let mut oversized = false;
-    let mut line_prefix = Vec::with_capacity(token.len());
-    let mut line_matches = true;
+    let mut line_prefix = Vec::with_capacity(token.len().max(cancel_token.len()));
+    let mut line_matches_token = true;
+    let mut line_matches_cancel = true;
+    let mut cancel_armed = false;
     let mut buffer = [0_u8; 8 * 1024];
 
     loop {
@@ -856,32 +867,49 @@ fn read_framed_terminal_query(mut reader: impl Read, token: &str) -> Result<Vec<
             bail!("terminal closed before the paste completion token was entered")
         }
         for &byte in &buffer[..read] {
+            if byte == b'\x03' {
+                append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                line_prefix.clear();
+                line_matches_token = true;
+                line_matches_cancel = true;
+                cancel_armed = true;
+                continue;
+            }
             if matches!(byte, b'\r' | b'\n') {
-                if line_matches && line_prefix == token {
+                if line_matches_token && line_prefix == token {
                     if oversized {
                         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
                     }
-                    return Ok(query);
+                    return Ok(TerminalQueryFrame::Complete(query));
+                }
+                if cancel_armed && line_matches_cancel && line_prefix == cancel_token {
+                    return Ok(TerminalQueryFrame::Cancelled);
                 }
                 append_query_bytes(&mut query, &line_prefix, &mut oversized);
                 append_query_bytes(&mut query, &[byte], &mut oversized);
                 line_prefix.clear();
-                line_matches = true;
-            } else if line_matches {
+                line_matches_token = true;
+                line_matches_cancel = true;
+            } else if line_matches_token || line_matches_cancel {
                 let position = line_prefix.len();
-                if token.get(position) == Some(&byte) {
-                    line_prefix.push(byte);
-                } else {
+                line_matches_token &= token.get(position) == Some(&byte);
+                line_matches_cancel &= cancel_token.get(position) == Some(&byte);
+                line_prefix.push(byte);
+                if !line_matches_token && !line_matches_cancel {
                     append_query_bytes(&mut query, &line_prefix, &mut oversized);
-                    append_query_bytes(&mut query, &[byte], &mut oversized);
                     line_prefix.clear();
-                    line_matches = false;
                 }
             } else {
                 append_query_bytes(&mut query, &[byte], &mut oversized);
             }
         }
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum TerminalQueryFrame {
+    Complete(Vec<u8>),
+    Cancelled,
 }
 
 fn append_query_bytes(query: &mut Vec<u8>, bytes: &[u8], oversized: &mut bool) {
@@ -1095,15 +1123,38 @@ const fn normalized_arch(value: &str) -> &str {
 mod tests {
     use std::io::{Cursor, Seek};
 
-    use super::{MAX_QUERY_BYTES, read_bounded_query, read_framed_terminal_query};
+    use super::{
+        MAX_QUERY_BYTES, TerminalQueryFrame, read_bounded_query, read_framed_terminal_query,
+    };
 
     #[test]
     fn framed_terminal_query_treats_eot_and_following_lines_as_input() -> anyhow::Result<()> {
         let input = b"SAFE\n\x04echo PWNED\nEND-ABCDEFGHJKLMN\r";
 
-        let query = read_framed_terminal_query(Cursor::new(input), "END-ABCDEFGHJKLMN")?;
+        let frame = read_framed_terminal_query(
+            Cursor::new(input),
+            "END-ABCDEFGHJKLMN",
+            "CANCEL-NPQRSTUVWXYZ2",
+        )?;
 
-        assert_eq!(query, b"SAFE\n\x04echo PWNED\n");
+        assert_eq!(
+            frame,
+            TerminalQueryFrame::Complete(b"SAFE\n\x04echo PWNED\n".to_vec())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn framed_terminal_query_requires_random_cancel_token_after_ctrl_c() -> anyhow::Result<()> {
+        let input = b"SAFE\x03CANCEL-NPQRSTUVWXYZ2\r";
+
+        let frame = read_framed_terminal_query(
+            Cursor::new(input),
+            "END-ABCDEFGHJKLMN",
+            "CANCEL-NPQRSTUVWXYZ2",
+        )?;
+
+        assert_eq!(frame, TerminalQueryFrame::Cancelled);
         Ok(())
     }
 
@@ -1114,7 +1165,8 @@ mod tests {
         let input_len = u64::try_from(input.len())?;
         let mut reader = Cursor::new(input);
 
-        let result = read_framed_terminal_query(&mut reader, "END-ABCDEFGHJKLMN");
+        let result =
+            read_framed_terminal_query(&mut reader, "END-ABCDEFGHJKLMN", "CANCEL-NPQRSTUVWXYZ2");
 
         assert!(result.is_err());
         assert_eq!(reader.stream_position()?, input_len);
