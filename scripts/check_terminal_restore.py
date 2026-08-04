@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import termios
+import tempfile
 import time
 from pathlib import Path
 
@@ -59,6 +60,58 @@ def check_startup_termination(binary: Path, delay_seconds: float) -> None:
         os.close(slave_fd)
 
 
+def check_hidden_prompt_rejected(binary: Path) -> None:
+    master_fd, slave_fd = pty.openpty()
+    original_mode = termios.tcgetattr(slave_fd)
+    try:
+        with tempfile.TemporaryFile() as error_file:
+            result = subprocess.run(
+                [binary, "fix", "--paste"],
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=error_file,
+                timeout=5.0,
+                check=False,
+            )
+            error_file.seek(0)
+            error = error_file.read()
+        if result.returncode == 0 or b"run without redirecting standard error" not in error:
+            raise RuntimeError(f"hidden prompt was not rejected clearly: {error!r}")
+        if termios.tcgetattr(slave_fd) != original_mode:
+            raise RuntimeError("hidden prompt rejection changed the input terminal mode")
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+def check_split_terminals_rejected(binary: Path) -> None:
+    input_master, input_slave = pty.openpty()
+    prompt_master, prompt_slave = pty.openpty()
+    input_mode = termios.tcgetattr(input_slave)
+    prompt_mode = termios.tcgetattr(prompt_slave)
+    try:
+        result = subprocess.run(
+            [binary, "fix", "--paste"],
+            stdin=input_slave,
+            stdout=prompt_slave,
+            stderr=prompt_slave,
+            timeout=5.0,
+            check=False,
+        )
+        output = read_until(prompt_master, b"same terminal as standard input", 5.0)
+        if result.returncode == 0:
+            raise RuntimeError(f"split prompt terminals were accepted: {output!r}")
+        if termios.tcgetattr(input_slave) != input_mode:
+            raise RuntimeError("split prompt rejection changed the input terminal mode")
+        if termios.tcgetattr(prompt_slave) != prompt_mode:
+            raise RuntimeError("split prompt rejection changed the prompt terminal mode")
+    finally:
+        os.close(input_master)
+        os.close(input_slave)
+        os.close(prompt_master)
+        os.close(prompt_slave)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: check_terminal_restore.py FIXCARD_BINARY", file=sys.stderr)
@@ -68,6 +121,8 @@ def main() -> int:
         return 2
 
     binary = Path(sys.argv[1]).resolve()
+    check_hidden_prompt_rejected(binary)
+    check_split_terminals_rejected(binary)
     for delay_seconds in STARTUP_DELAYS_SECONDS:
         for _ in range(4):
             check_startup_termination(binary, delay_seconds)
@@ -105,7 +160,9 @@ def main() -> int:
         os.close(master_fd)
         os.close(slave_fd)
 
-    print("SIGTERM restored the interactive paste pseudo-terminal during startup and input")
+    print(
+        "interactive paste rejected hidden prompts and restored its terminal during startup and input"
+    )
     return 0
 
 

@@ -26,7 +26,8 @@ candidate until the documented product-validation gates pass.
   paste tails from reaching the caller's shell. Ctrl-C arms a separate random
   cancellation token, preserving a safe escape path while raw mode is active;
   catchable Unix termination signals restore terminal mode before re-raising,
-  including signals received during raw-mode activation.
+  including signals received during raw-mode activation. Hidden or split
+  prompt terminals are rejected before raw mode begins.
 
 ## [1.0.0-rc.4] - 2026-08-04
 

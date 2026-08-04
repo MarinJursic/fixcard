@@ -21,6 +21,8 @@ card can publish its contents according to the repository's remotes.
   with potentially unread input. A signal relay restores terminal mode before
   re-raising catchable Unix termination signals such as SIGTERM. Activation is
   synchronized so a signal cannot race ahead of the transition into raw mode.
+  Interactive paste refuses redirected prompts and, on Unix, prompt terminals
+  that differ from the input terminal, so its random framing tokens stay visible.
 - Private cards are plain files under `<git-common-dir>/fixcard/cards/`.
 - Shared cards are plain files under `.fixcards/` and become public or private
   according to the Git repository.

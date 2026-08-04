@@ -51,6 +51,8 @@ status under recorded conditions.
   random cancellation frame instead of exiting with unread input. Catchable
   Unix termination signals restore terminal mode before being re-raised. A
   synchronization gate covers the transition into raw mode.
+  Redirected prompts and, on Unix, split input/prompt terminals are rejected
+  before raw mode so the random completion and cancellation tokens stay visible.
 - No runtime network request is made.
 - Team files are not written without explicit `--team` intent and preview.
 - A finding that resembles a secret blocks team-save by default.

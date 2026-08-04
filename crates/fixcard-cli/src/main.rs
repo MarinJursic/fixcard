@@ -808,6 +808,7 @@ fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
 }
 
 fn read_terminal_query() -> Result<Vec<u8>> {
+    ensure_visible_terminal_prompt()?;
     let token = frame_token("END-")?;
     let cancel_token = frame_token("CANCEL-")?;
     #[cfg(unix)]
@@ -835,6 +836,31 @@ fn read_terminal_query() -> Result<Vec<u8>> {
         TerminalQueryFrame::Complete(query) => Ok(query),
         TerminalQueryFrame::Cancelled => bail!("interactive paste cancelled"),
     }
+}
+
+fn ensure_visible_terminal_prompt() -> Result<()> {
+    if !io::stderr().is_terminal() {
+        bail!(
+            "interactive paste requires standard error on the input terminal; run without redirecting standard error or pipe failure text into `fix`"
+        )
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        let input =
+            fs::metadata("/dev/fd/0").context("cannot identify the interactive input terminal")?;
+        let prompt =
+            fs::metadata("/dev/fd/2").context("cannot identify the interactive prompt terminal")?;
+        if (input.dev(), input.ino(), input.rdev()) != (prompt.dev(), prompt.ino(), prompt.rdev()) {
+            bail!(
+                "interactive paste requires standard error on the same terminal as standard input; run without redirecting standard error or pipe failure text into `fix`"
+            )
+        }
+    }
+
+    Ok(())
 }
 
 fn frame_token(prefix: &str) -> Result<String> {
