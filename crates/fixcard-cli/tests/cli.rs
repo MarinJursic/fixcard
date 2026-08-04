@@ -13,6 +13,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -134,6 +135,48 @@ fn bare_fixcard_uses_the_one_step_fix_flow() {
 }
 
 #[test]
+fn installed_fix_uses_the_one_step_piped_lookup_flow() {
+    let repository = repository();
+    cargo_bin_cmd!("fix")
+        .current_dir(repository.path())
+        .write_stdin("E_GENERATED_STALE generated-client")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ));
+}
+
+#[test]
+fn installed_fix_has_its_own_help_and_version() {
+    cargo_bin_cmd!("fix")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
+        .stdout(predicate::str::contains("never invokes a shell"));
+    cargo_bin_cmd!("fix")
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("fix 1.0.0-rc."));
+}
+
+#[test]
+fn installed_fix_fails_clearly_without_its_companion() {
+    let directory = TempDir::new().expect("create isolated binary directory");
+    let standalone = directory
+        .path()
+        .join(format!("fix{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(env!("CARGO_BIN_EXE_fix"), &standalone).expect("copy fix executable");
+    Command::new(standalone)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("companion"))
+        .stderr(predicate::str::contains("reinstall Fixcard"));
+}
+
+#[test]
 fn reads_failure_from_standard_input() {
     let repository = repository();
     cargo_bin_cmd!("fixcard")
@@ -185,6 +228,38 @@ fn run_preserves_child_output_and_failure_status() {
         .stderr(predicate::str::contains(
             "Run the repository generator and review its diff.",
         ));
+}
+
+#[cfg(unix)]
+#[test]
+fn installed_fix_preserves_child_output_and_failure_status() {
+    let repository = repository();
+    cargo_bin_cmd!("fix")
+        .current_dir(repository.path())
+        .args([
+            "sh",
+            "-c",
+            "printf child-output; printf 'E_GENERATED_STALE generated-client' >&2; exit 23",
+        ])
+        .assert()
+        .code(23)
+        .stdout(predicate::eq(b"child-output".as_slice()))
+        .stderr(predicate::str::contains("1 strong Fixcard match"))
+        .stderr(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ));
+}
+
+#[cfg(unix)]
+#[test]
+fn installed_fix_passes_shell_metacharacters_as_literal_arguments() {
+    let repository = repository();
+    cargo_bin_cmd!("fix")
+        .current_dir(repository.path())
+        .args(["printf", "%s", "$(not-run);*;$HOME"])
+        .assert()
+        .success()
+        .stdout(predicate::eq(b"$(not-run);*;$HOME".as_slice()));
 }
 
 #[cfg(unix)]
@@ -321,12 +396,12 @@ fn status_is_actionable_outside_git() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Repository: not detected"))
-        .stdout(predicate::str::contains("fixcard run --"))
+        .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
         .stdout(predicate::str::contains("fixcard save"));
 }
 
 #[test]
-fn status_surfaces_detected_literal_fix_setup() {
+fn status_surfaces_the_installed_literal_fix_workflow() {
     let directory = TempDir::new().expect("create non-repository directory");
     let data = TempDir::new().expect("create isolated data directory");
     cargo_bin_cmd!("fixcard")
@@ -336,9 +411,9 @@ fn status_surfaces_detected_literal_fix_setup() {
         .arg("status")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "eval \"$(fixcard shell-init zsh)\"",
-        ));
+        .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
+        .stdout(predicate::str::contains("existing-output | fix"))
+        .stdout(predicate::str::contains("shell-init").not());
 }
 
 #[test]

@@ -7,6 +7,20 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+## [1.0.0-rc.4] - 2026-08-04
+
+### Usability additions
+
+- Install a real cross-platform `fix` companion beside `fixcard`, so explicit
+  command capture, piped lookup, and interactive status work in every shell
+  without per-session activation or profile edits.
+
+### Distribution changes
+
+- Package and smoke-test both executables in every native release archive.
+- Keep `shell-init` as a compatibility function rather than the primary path to
+  the literal command.
+
 ## [1.0.0-rc.3] - 2026-08-04
 
 ### Validation additions
@@ -103,7 +117,8 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...HEAD
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...HEAD
+[1.0.0-rc.4]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...v1.0.0-rc.4
 [1.0.0-rc.3]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MarinJursic/fixcard/compare/v0.1.0-alpha.2...v1.0.0-rc.1

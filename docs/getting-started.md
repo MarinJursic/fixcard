@@ -5,37 +5,33 @@ works outside Git when user-global cards are available.
 
 ## 1. Capture a failure safely
 
-The most reliable workflow is to let Fixcard observe an explicit command:
+The shortest reliable workflow is to let the installed `fix` companion observe
+an explicit command:
 
 ```console
-$ fixcard run -- pnpm install --frozen-lockfile
+$ fix pnpm install --frozen-lockfile
 ```
 
-Fixcard executes exactly the program and argv after `--`, without a shell. It
-streams both output channels, keeps only a bounded in-memory tail, and searches
-after a nonzero exit. The command's exit code remains the process exit code even
-when a card matches.
+The companion delegates directly to `fixcard run --` and executes exactly the
+program and argv supplied to it, without a shell. It streams both output
+channels, keeps only a bounded in-memory tail, and searches after a nonzero
+exit. The command's exit code remains the process exit code even when a card
+matches.
 
 This mode uses pipes rather than a pseudo-terminal. A program may disable color
 or interactive prompts. Run TTY-dependent commands normally and pass their
 failure text to `fixcard fix` afterward.
 
-For a shorter opt-in spelling in the current Bash or Zsh session:
+It also accepts existing output and needs no shell activation:
 
 ```bash
-eval "$(fixcard shell-init)"
-fix pnpm install --frozen-lockfile
 journalctl -u example --no-pager | fix
 ```
 
-Fixcard infers common shells from `SHELL`; pass `bash`, `zsh`, `fish`, or
-`powershell` explicitly when detection is unavailable or does not match the
-current shell. Inspect the emitted function before adding it to a shell
-profile. With a command, it delegates to `fixcard run --` and preserves the
-same direct-argv, no-card-execution contract. With no arguments it delegates to
-bare `fixcard`: piped text is searched, while an interactive terminal shows
-storage status and next steps. Fish and PowerShell activation syntax is in the
-[installation guide](installation.md#optional-shell-setup).
+With no arguments it delegates to bare `fixcard`: piped text is searched, while
+an interactive terminal shows storage status and next steps. The compatibility
+shell function is documented in the
+[installation guide](installation.md#shell-completion-and-compatibility).
 
 ## 2. Look up text you already have
 

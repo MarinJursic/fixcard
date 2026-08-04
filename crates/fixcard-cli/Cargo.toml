@@ -17,14 +17,18 @@ publish = false
 name = "fixcard"
 path = "src/main.rs"
 
+[[bin]]
+name = "fix"
+path = "src/fix.rs"
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 dialoguer.workspace = true
-fixcard-core = { version = "=1.0.0-rc.3", path = "../fixcard-core" }
-fixcard-git = { version = "=1.0.0-rc.3", path = "../fixcard-git" }
-fixcard-lint = { version = "=1.0.0-rc.3", path = "../fixcard-lint" }
+fixcard-core = { version = "=1.0.0-rc.4", path = "../fixcard-core" }
+fixcard-git = { version = "=1.0.0-rc.4", path = "../fixcard-git" }
+fixcard-lint = { version = "=1.0.0-rc.4", path = "../fixcard-lint" }
 jiff.workspace = true
 semver.workspace = true
 serde_yaml_ng.workspace = true

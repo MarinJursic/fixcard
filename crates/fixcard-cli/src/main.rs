@@ -69,7 +69,7 @@ enum Command {
     List,
     /// Show active storage paths, counts, and repository state.
     Status,
-    /// Print an opt-in `fix` function for explicit command capture or piped lookup.
+    /// Print a compatibility `fix` function for explicit capture or piped lookup.
     ShellInit {
         /// Shell whose function syntax should be generated; inferred from SHELL when omitted.
         #[arg(value_enum)]
@@ -301,17 +301,6 @@ fn detected_integration_shell() -> Option<IntegrationShell> {
     }
 }
 
-const fn shell_activation(shell: IntegrationShell) -> &'static str {
-    match shell {
-        IntegrationShell::Bash => "eval \"$(fixcard shell-init bash)\"",
-        IntegrationShell::Zsh => "eval \"$(fixcard shell-init zsh)\"",
-        IntegrationShell::Fish => "fixcard shell-init fish | source",
-        IntegrationShell::PowerShell => {
-            "$fixcardInit = & fixcard shell-init powershell; Invoke-Expression $fixcardInit"
-        }
-    }
-}
-
 fn completion(shell: clap_complete::Shell) -> Result<ExitCode> {
     let mut source = Vec::new();
     clap_complete::generate(shell, &mut Cli::command(), "fixcard", &mut source);
@@ -374,15 +363,9 @@ fn status(repository: Option<&Repository>) -> Result<ExitCode> {
             .count()
     )?;
     outputln!("Quick start:")?;
-    outputln!("  fixcard run -- PROGRAM [ARGS...]  # look up a fix after failure")?;
-    outputln!("  fixcard save                     # preserve a proven resolution")?;
-    if let Some(shell) = detected_integration_shell() {
-        outputln!("Optional literal `fix` command for this session:")?;
-        outputln!("  {}", shell_activation(shell))?;
-    } else {
-        outputln!("Optional literal `fix` command:")?;
-        outputln!("  fixcard shell-init <bash|zsh|fish|powershell>")?;
-    }
+    outputln!("  fix PROGRAM [ARGS...]  # run once and look up guidance after failure")?;
+    outputln!("  existing-output | fix  # look up output you already have")?;
+    outputln!("  fixcard save           # preserve a proven resolution")?;
     Ok(ExitCode::SUCCESS)
 }
 
