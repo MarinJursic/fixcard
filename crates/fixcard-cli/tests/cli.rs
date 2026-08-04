@@ -292,7 +292,22 @@ fn reports_no_cards_outside_a_repository() {
         .args(["find", "failure"])
         .assert()
         .code(1)
-        .stdout(predicate::str::contains("No Fixcards are available"));
+        .stdout(predicate::str::contains("No Fixcards are available"))
+        .stdout(predicate::str::contains("fixcard save --global"));
+}
+
+#[test]
+fn an_unmatched_failure_suggests_private_capture() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "E_NOT_RECORDED"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("No strong Fixcard match"))
+        .stdout(predicate::str::contains(
+            "preserve the resolution with: fixcard save",
+        ));
 }
 
 #[test]
@@ -306,7 +321,24 @@ fn status_is_actionable_outside_git() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Repository: not detected"))
-        .stdout(predicate::str::contains("fixcard run --"));
+        .stdout(predicate::str::contains("fixcard run --"))
+        .stdout(predicate::str::contains("fixcard save"));
+}
+
+#[test]
+fn status_surfaces_detected_literal_fix_setup() {
+    let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .env("SHELL", "/bin/zsh")
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "eval \"$(fixcard shell-init zsh)\"",
+        ));
 }
 
 #[test]
@@ -319,7 +351,24 @@ fn shell_init_generates_an_explicit_fix_wrapper() {
         .args(["shell-init", "bash"])
         .assert()
         .success()
-        .stdout(predicate::eq("fix() { command fixcard run -- \"$@\"; }\n"));
+        .stdout(predicate::str::contains(
+            "if [ \"$#\" -eq 0 ]; then command fixcard",
+        ))
+        .stdout(predicate::str::contains(
+            "else command fixcard run -- \"$@\"",
+        ));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["shell-init", "fish"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "if test (count $argv) -eq 0; command fixcard",
+        ))
+        .stdout(predicate::str::contains(
+            "else; command fixcard run -- $argv",
+        ));
     cargo_bin_cmd!("fixcard")
         .current_dir(directory.path())
         .env("FIXCARD_DATA_DIR", data.path())
@@ -327,7 +376,34 @@ fn shell_init_generates_an_explicit_fix_wrapper() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "function fix { & fixcard run -- @args }",
+            "if ($args.Count -eq 0) { & fixcard } else { & fixcard run -- @args }",
+        ));
+}
+
+#[test]
+fn shell_init_detects_common_shells_when_omitted() {
+    let directory = TempDir::new().expect("create directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .env("SHELL", "/usr/bin/zsh")
+        .arg("shell-init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "else command fixcard run -- \"$@\"",
+        ));
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .env("SHELL", "/bin/tcsh")
+        .arg("shell-init")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "pass bash, zsh, fish, or powershell explicitly",
         ));
 }
 
@@ -368,6 +444,49 @@ fn generated_bash_fix_wrapper_preserves_literal_arguments() {
         "Bash integration failed: {output:?}"
     );
     assert_eq!(output.stdout, b"$(not-run);*;$HOME");
+}
+
+#[cfg(unix)]
+#[test]
+fn generated_bash_fix_wrapper_looks_up_piped_failure_without_arguments() {
+    let repository = repository();
+    let data = TempDir::new().expect("create isolated data directory");
+    let fixcard = env!("CARGO_BIN_EXE_fixcard");
+    let generated = Command::new(fixcard)
+        .current_dir(repository.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .args(["shell-init", "bash"])
+        .output()
+        .expect("generate Bash integration");
+    assert!(generated.status.success());
+
+    let mut script = String::from_utf8(generated.stdout).expect("UTF-8 Bash integration");
+    script.push_str("\nprintf '%s' 'E_GENERATED_STALE generated-client' | fix\n");
+    let binary_directory = Path::new(fixcard)
+        .parent()
+        .expect("fixcard binary directory");
+    let inherited_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut path = vec![binary_directory.to_path_buf()];
+    path.extend(std::env::split_paths(&inherited_path));
+    let path = std::env::join_paths(path).expect("compose PATH");
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(repository.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .env("PATH", path)
+        .output()
+        .expect("execute generated Bash integration");
+    assert!(
+        output.status.success(),
+        "Bash integration failed: {output:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Run the repository generator and review its diff."),
+        "piped lookup did not render the recorded resolution: {output:?}"
+    );
 }
 
 #[test]

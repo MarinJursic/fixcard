@@ -20,16 +20,22 @@ This mode uses pipes rather than a pseudo-terminal. A program may disable color
 or interactive prompts. Run TTY-dependent commands normally and pass their
 failure text to `fixcard fix` afterward.
 
-For a shorter opt-in spelling in the current shell:
+For a shorter opt-in spelling in the current Bash or Zsh session:
 
 ```bash
-eval "$(fixcard shell-init zsh)"
+eval "$(fixcard shell-init)"
 fix pnpm install --frozen-lockfile
+journalctl -u example --no-pager | fix
 ```
 
-Use `bash`, `zsh`, `fish`, or `powershell` as appropriate. Inspect the emitted
-function before adding it to a shell profile. It delegates to `fixcard run --`
-and therefore preserves the same direct-argv, no-card-execution contract.
+Fixcard infers common shells from `SHELL`; pass `bash`, `zsh`, `fish`, or
+`powershell` explicitly when detection is unavailable or does not match the
+current shell. Inspect the emitted function before adding it to a shell
+profile. With a command, it delegates to `fixcard run --` and preserves the
+same direct-argv, no-card-execution contract. With no arguments it delegates to
+bare `fixcard`: piped text is searched, while an interactive terminal shows
+storage status and next steps. Fish and PowerShell activation syntax is in the
+[installation guide](installation.md#optional-shell-setup).
 
 ## 2. Look up text you already have
 

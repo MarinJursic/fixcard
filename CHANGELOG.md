@@ -7,6 +7,23 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+### Unreleased additions
+
+- Coordinator-ready research operations guide, privacy-safe blank study
+  templates, fixed denominators, full kill criteria, and CI schema validation.
+- Milestone 0 evidence gate requiring at least 100 permissioned, sanitized real
+  failure/resolution pairs before stable promotion.
+
+### Unreleased changes
+
+- `shell-init` now infers common shells when its argument is omitted and
+  generates one `fix` function for explicit command capture, piped lookup, and
+  interactive status.
+- Interactive status now shows a two-command quick start and the detected
+  current-session activation command.
+- Unmatched lookups now suggest the appropriate private or user-global capture
+  command after the failure is solved.
+
 ## [1.0.0-rc.2] - 2026-08-03
 
 ### Adoption additions

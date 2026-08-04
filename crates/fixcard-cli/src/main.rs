@@ -69,11 +69,11 @@ enum Command {
     List,
     /// Show active storage paths, counts, and repository state.
     Status,
-    /// Print an opt-in shell function named `fix` for explicit command capture.
+    /// Print an opt-in `fix` function for explicit command capture or piped lookup.
     ShellInit {
-        /// Shell whose function syntax should be generated.
+        /// Shell whose function syntax should be generated; inferred from SHELL when omitted.
         #[arg(value_enum)]
-        shell: IntegrationShell,
+        shell: Option<IntegrationShell>,
     },
     /// Generate command-line completion definitions.
     Completion {
@@ -270,16 +270,46 @@ fn run() -> Result<ExitCode> {
     }
 }
 
-fn shell_init(shell: IntegrationShell) -> Result<ExitCode> {
+fn shell_init(shell: Option<IntegrationShell>) -> Result<ExitCode> {
+    let shell = shell.or_else(detected_integration_shell).ok_or_else(|| {
+        anyhow!("cannot detect the current shell; pass bash, zsh, fish, or powershell explicitly")
+    })?;
     let source = match shell {
         IntegrationShell::Bash | IntegrationShell::Zsh => {
-            "fix() { command fixcard run -- \"$@\"; }"
+            "fix() { if [ \"$#\" -eq 0 ]; then command fixcard; else command fixcard run -- \"$@\"; fi; }"
         }
-        IntegrationShell::Fish => "function fix; command fixcard run -- $argv; end",
-        IntegrationShell::PowerShell => "function fix { & fixcard run -- @args }",
+        IntegrationShell::Fish => {
+            "function fix; if test (count $argv) -eq 0; command fixcard; else; command fixcard run -- $argv; end; end"
+        }
+        IntegrationShell::PowerShell => {
+            "function fix { if ($args.Count -eq 0) { & fixcard } else { & fixcard run -- @args } }"
+        }
     };
     outputln!("{source}")?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn detected_integration_shell() -> Option<IntegrationShell> {
+    let path = PathBuf::from(env::var_os("SHELL")?);
+    let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+    match name.trim_end_matches(".exe") {
+        "bash" => Some(IntegrationShell::Bash),
+        "zsh" => Some(IntegrationShell::Zsh),
+        "fish" => Some(IntegrationShell::Fish),
+        "powershell" | "pwsh" => Some(IntegrationShell::PowerShell),
+        _ => None,
+    }
+}
+
+const fn shell_activation(shell: IntegrationShell) -> &'static str {
+    match shell {
+        IntegrationShell::Bash => "eval \"$(fixcard shell-init bash)\"",
+        IntegrationShell::Zsh => "eval \"$(fixcard shell-init zsh)\"",
+        IntegrationShell::Fish => "fixcard shell-init fish | source",
+        IntegrationShell::PowerShell => {
+            "$fixcardInit = & fixcard shell-init powershell; Invoke-Expression $fixcardInit"
+        }
+    }
 }
 
 fn completion(shell: clap_complete::Shell) -> Result<ExitCode> {
@@ -343,7 +373,16 @@ fn status(repository: Option<&Repository>) -> Result<ExitCode> {
             .filter(|card| card.origin == CardOrigin::User)
             .count()
     )?;
-    outputln!("Try: fixcard run -- PROGRAM [ARGS...] or fixcard fix ERROR_TEXT")?;
+    outputln!("Quick start:")?;
+    outputln!("  fixcard run -- PROGRAM [ARGS...]  # look up a fix after failure")?;
+    outputln!("  fixcard save                     # preserve a proven resolution")?;
+    if let Some(shell) = detected_integration_shell() {
+        outputln!("Optional literal `fix` command for this session:")?;
+        outputln!("  {}", shell_activation(shell))?;
+    } else {
+        outputln!("Optional literal `fix` command:")?;
+        outputln!("  fixcard shell-init <bash|zsh|fish|powershell>")?;
+    }
     Ok(ExitCode::SUCCESS)
 }
 
@@ -538,6 +577,7 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
             )?;
         }
         outputln!("User-global cards: {}", user_cards_path()?.display())?;
+        print_capture_hint(repository)?;
         return Ok(ExitCode::from(1));
     }
     let environment = environment(&args.tools)?;
@@ -564,6 +604,7 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
     }
 
     outputln!("No strong Fixcard match.")?;
+    print_capture_hint(repository)?;
     if results.is_empty() {
         return Ok(ExitCode::from(1));
     }
@@ -579,6 +620,17 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
         }
     }
     Ok(ExitCode::from(1))
+}
+
+fn print_capture_hint(repository: Option<&Repository>) -> Result<()> {
+    if repository.is_some() {
+        outputln!("After solving this failure, preserve the resolution with: fixcard save")?;
+    } else {
+        outputln!(
+            "After solving this failure, preserve a portable resolution with: fixcard save --global"
+        )?;
+    }
+    Ok(())
 }
 
 fn show(repository: Option<&Repository>, id: &str) -> Result<ExitCode> {
