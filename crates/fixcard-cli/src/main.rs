@@ -108,10 +108,17 @@ enum IntegrationShell {
 }
 
 #[derive(Clone, Debug, Default, Args)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent lookup display and input switches map directly to CLI flags"
+)]
 struct FindArgs {
     /// Failure text. When omitted, read standard input.
     #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
     query: Vec<String>,
+    /// Prompt for a one-shot failure paste when standard input is a terminal.
+    #[arg(long)]
+    paste: bool,
     /// Include weak candidates and their caution states.
     #[arg(long)]
     all: bool,
@@ -276,13 +283,13 @@ fn shell_init(shell: Option<IntegrationShell>) -> Result<ExitCode> {
     })?;
     let source = match shell {
         IntegrationShell::Bash | IntegrationShell::Zsh => {
-            "fix() { if [ \"$#\" -eq 0 ]; then command fixcard; else command fixcard run -- \"$@\"; fi; }"
+            "fix() { if [ \"$#\" -eq 0 ]; then command fixcard fix --paste; else command fixcard run -- \"$@\"; fi; }"
         }
         IntegrationShell::Fish => {
-            "function fix; if test (count $argv) -eq 0; command fixcard; else; command fixcard run -- $argv; end; end"
+            "function fix; if test (count $argv) -eq 0; command fixcard fix --paste; else; command fixcard run -- $argv; end; end"
         }
         IntegrationShell::PowerShell => {
-            "function fix { if ($args.Count -eq 0) { & fixcard } else { & fixcard run -- @args } }"
+            "function fix { if ($args.Count -eq 0) { & fixcard fix --paste } else { & fixcard run -- @args } }"
         }
     };
     outputln!("{source}")?;
@@ -363,6 +370,7 @@ fn status(repository: Option<&Repository>) -> Result<ExitCode> {
             .count()
     )?;
     outputln!("Quick start:")?;
+    outputln!("  fix                    # paste a failure for one-shot lookup")?;
     outputln!("  fix PROGRAM [ARGS...]  # run once and look up guidance after failure")?;
     outputln!("  existing-output | fix  # look up output you already have")?;
     outputln!("  fixcard save           # preserve a proven resolution")?;
@@ -541,7 +549,7 @@ fn lint_paths(path: &std::path::Path) -> Result<Vec<PathBuf>> {
 }
 
 fn find(repository: Option<&Repository>, args: &FindArgs) -> Result<ExitCode> {
-    let query = read_query(&args.query)?;
+    let query = read_query(&args.query, args.paste)?;
     find_query(repository, args, &query)
 }
 
@@ -765,7 +773,7 @@ fn user_cards_path() -> Result<PathBuf> {
         .ok_or_else(|| anyhow!("cannot determine the per-user Fixcard data directory"))
 }
 
-fn read_query(arguments: &[String]) -> Result<String> {
+fn read_query(arguments: &[String], read_terminal: bool) -> Result<String> {
     if !arguments.is_empty() {
         let query = arguments.join(" ");
         if query.len() > MAX_QUERY_BYTES {
@@ -773,21 +781,258 @@ fn read_query(arguments: &[String]) -> Result<String> {
         }
         return Ok(query);
     }
-    if io::stdin().is_terminal() {
+    let terminal = io::stdin().is_terminal();
+    if terminal && !read_terminal {
         bail!(
             "no failure input; use `fixcard run -- COMMAND`, pass failure text after `fix`, or pipe it on standard input"
         )
     }
+    let bytes = if terminal {
+        read_terminal_query()?
+    } else {
+        read_bounded_query(io::stdin().lock())?
+    };
+    decode_query(bytes)
+}
+
+fn read_bounded_query(reader: impl Read) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    io::stdin()
-        .lock()
+    reader
         .take(u64::try_from(MAX_QUERY_BYTES + 1).unwrap_or(u64::MAX))
         .read_to_end(&mut bytes)
         .context("cannot read failure text from standard input")?;
     if bytes.len() > MAX_QUERY_BYTES {
         bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
     }
-    String::from_utf8(bytes).context("failure text must be valid UTF-8")
+    Ok(bytes)
+}
+
+fn read_terminal_query() -> Result<Vec<u8>> {
+    ensure_visible_terminal_prompt()?;
+    let token = frame_token("END-")?;
+    let cancel_token = frame_token("CANCEL-")?;
+    #[cfg(unix)]
+    let signal_activation = std::sync::Arc::new(std::sync::Mutex::new(()));
+    #[cfg(unix)]
+    let signal_activation_guard = signal_activation
+        .lock()
+        .map_err(|_| anyhow!("terminal-restoration activation lock is poisoned"))?;
+    #[cfg(unix)]
+    let _signal_restore =
+        TerminationSignalGuard::install(std::sync::Arc::clone(&signal_activation))?;
+    let raw_mode = RawModeGuard::enable();
+    #[cfg(unix)]
+    drop(signal_activation_guard);
+    let mut raw_mode = raw_mode?;
+    write!(
+        io::stderr().lock(),
+        "Paste failure text, press Enter, type `{token}`, then press Enter. To cancel, press Ctrl-C, type `{cancel_token}`, and press Enter. Input is hidden, used once, and not saved.\r\n"
+    )
+    .context("cannot write paste instructions")?;
+
+    let result = read_framed_terminal_query(io::stdin().lock(), &token, &cancel_token);
+    raw_mode.restore()?;
+    match result? {
+        TerminalQueryFrame::Complete(query) => Ok(query),
+        TerminalQueryFrame::Cancelled => bail!("interactive paste cancelled"),
+    }
+}
+
+fn ensure_visible_terminal_prompt() -> Result<()> {
+    if !io::stderr().is_terminal() {
+        bail!(
+            "interactive paste requires standard error on the input terminal; run without redirecting standard error or pipe failure text into `fix`"
+        )
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        let input =
+            fs::metadata("/dev/fd/0").context("cannot identify the interactive input terminal")?;
+        let prompt =
+            fs::metadata("/dev/fd/2").context("cannot identify the interactive prompt terminal")?;
+        if (input.dev(), input.ino(), input.rdev()) != (prompt.dev(), prompt.ino(), prompt.rdev()) {
+            bail!(
+                "interactive paste requires standard error on the same terminal as standard input; run without redirecting standard error or pipe failure text into `fix`"
+            )
+        }
+    }
+
+    Ok(())
+}
+
+fn frame_token(prefix: &str) -> Result<String> {
+    const ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+    let mut random = [0_u8; 8];
+    getrandom::fill(&mut random)
+        .map_err(|error| anyhow!("cannot generate a secure paste completion token: {error}"))?;
+    let value = random
+        .into_iter()
+        .fold(0_u64, |value, byte| (value << 8) | u64::from(byte));
+    let mut token = String::from(prefix);
+    for shift in (0_u32..13).rev() {
+        let index = u8::try_from((value >> (shift * 5)) & 0x1f)
+            .map(usize::from)
+            .context("completion-token index is out of range")?;
+        token.push(char::from(ALPHABET[index]));
+    }
+    Ok(token)
+}
+
+fn read_framed_terminal_query(
+    mut reader: impl Read,
+    token: &str,
+    cancel_token: &str,
+) -> Result<TerminalQueryFrame> {
+    let token = token.as_bytes();
+    let cancel_token = cancel_token.as_bytes();
+    let mut query = Vec::new();
+    let mut oversized = false;
+    let mut line_prefix = Vec::with_capacity(token.len().max(cancel_token.len()));
+    let mut line_matches_token = true;
+    let mut line_matches_cancel = true;
+    let mut cancel_armed = false;
+    let mut buffer = [0_u8; 8 * 1024];
+
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .context("cannot read failure text from the terminal")?;
+        if read == 0 {
+            bail!("terminal closed before the paste completion token was entered")
+        }
+        for &byte in &buffer[..read] {
+            if byte == b'\x03' {
+                append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                line_prefix.clear();
+                line_matches_token = true;
+                line_matches_cancel = true;
+                cancel_armed = true;
+                continue;
+            }
+            if matches!(byte, b'\r' | b'\n') {
+                if line_matches_token && line_prefix == token {
+                    if oversized {
+                        bail!("query exceeds the {MAX_QUERY_BYTES}-byte safety limit")
+                    }
+                    return Ok(TerminalQueryFrame::Complete(query));
+                }
+                if cancel_armed && line_matches_cancel && line_prefix == cancel_token {
+                    return Ok(TerminalQueryFrame::Cancelled);
+                }
+                append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                append_query_bytes(&mut query, &[byte], &mut oversized);
+                line_prefix.clear();
+                line_matches_token = true;
+                line_matches_cancel = true;
+            } else if line_matches_token || line_matches_cancel {
+                let position = line_prefix.len();
+                line_matches_token &= token.get(position) == Some(&byte);
+                line_matches_cancel &= cancel_token.get(position) == Some(&byte);
+                line_prefix.push(byte);
+                if !line_matches_token && !line_matches_cancel {
+                    append_query_bytes(&mut query, &line_prefix, &mut oversized);
+                    line_prefix.clear();
+                }
+            } else {
+                append_query_bytes(&mut query, &[byte], &mut oversized);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum TerminalQueryFrame {
+    Complete(Vec<u8>),
+    Cancelled,
+}
+
+fn append_query_bytes(query: &mut Vec<u8>, bytes: &[u8], oversized: &mut bool) {
+    let available = MAX_QUERY_BYTES.saturating_sub(query.len());
+    let keep = available.min(bytes.len());
+    query.extend_from_slice(&bytes[..keep]);
+    *oversized |= keep < bytes.len();
+}
+
+struct RawModeGuard {
+    active: bool,
+}
+
+impl RawModeGuard {
+    fn enable() -> Result<Self> {
+        crossterm::terminal::enable_raw_mode().context("cannot enable safe terminal paste mode")?;
+        Ok(Self { active: true })
+    }
+
+    fn restore(&mut self) -> Result<()> {
+        crossterm::terminal::disable_raw_mode()
+            .context("cannot restore the terminal after reading failure text")?;
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+    }
+}
+
+#[cfg(unix)]
+struct TerminationSignalGuard {
+    handle: signal_hook::iterator::Handle,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl TerminationSignalGuard {
+    fn install(activation: std::sync::Arc<std::sync::Mutex<()>>) -> Result<Self> {
+        use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
+
+        let mut signals = signal_hook::iterator::Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])
+            .context("cannot install terminal-restoration signal handlers")?;
+        let handle = signals.handle();
+        let thread = std::thread::Builder::new()
+            .name(String::from("fixcard-terminal-restore"))
+            .spawn(move || {
+                if let Some(signal) = signals.forever().next() {
+                    let _activation_guard = activation
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let _ = crossterm::terminal::disable_raw_mode();
+                    let _ = signal_hook::low_level::emulate_default_handler(signal);
+                    std::process::exit(128_i32.saturating_add(signal));
+                }
+            })
+            .context("cannot start the terminal-restoration signal handler")?;
+        Ok(Self {
+            handle,
+            thread: Some(thread),
+        })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TerminationSignalGuard {
+    fn drop(&mut self) {
+        self.handle.close();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn decode_query(bytes: Vec<u8>) -> Result<String> {
+    let query = String::from_utf8(bytes).context("failure text must be valid UTF-8")?;
+    if query.trim().is_empty() {
+        bail!("no failure text received")
+    }
+    Ok(query)
 }
 
 fn environment(values: &[String]) -> Result<Environment> {
@@ -953,5 +1198,75 @@ const fn normalized_arch(value: &str) -> &str {
     match value.as_bytes() {
         b"aarch64" => "arm64",
         _ => value,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Seek};
+
+    use super::{
+        MAX_QUERY_BYTES, TerminalQueryFrame, read_bounded_query, read_framed_terminal_query,
+    };
+
+    #[test]
+    fn framed_terminal_query_treats_eot_and_following_lines_as_input() -> anyhow::Result<()> {
+        let input = b"SAFE\n\x04echo PWNED\nEND-ABCDEFGHJKLMN\r";
+
+        let frame = read_framed_terminal_query(
+            Cursor::new(input),
+            "END-ABCDEFGHJKLMN",
+            "CANCEL-NPQRSTUVWXYZ2",
+        )?;
+
+        assert_eq!(
+            frame,
+            TerminalQueryFrame::Complete(b"SAFE\n\x04echo PWNED\n".to_vec())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn framed_terminal_query_requires_random_cancel_token_after_ctrl_c() -> anyhow::Result<()> {
+        let input = b"SAFE\x03CANCEL-NPQRSTUVWXYZ2\r";
+
+        let frame = read_framed_terminal_query(
+            Cursor::new(input),
+            "END-ABCDEFGHJKLMN",
+            "CANCEL-NPQRSTUVWXYZ2",
+        )?;
+
+        assert_eq!(frame, TerminalQueryFrame::Cancelled);
+        Ok(())
+    }
+
+    #[test]
+    fn framed_terminal_query_discards_oversize_input_until_its_token() -> anyhow::Result<()> {
+        let mut input = vec![b'x'; MAX_QUERY_BYTES + 128];
+        input.extend_from_slice(b"\nEND-ABCDEFGHJKLMN\r");
+        let input_len = u64::try_from(input.len())?;
+        let mut reader = Cursor::new(input);
+
+        let result =
+            read_framed_terminal_query(&mut reader, "END-ABCDEFGHJKLMN", "CANCEL-NPQRSTUVWXYZ2");
+
+        assert!(result.is_err());
+        assert_eq!(reader.stream_position()?, input_len);
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_piped_query_fails_without_draining_the_source() -> anyhow::Result<()> {
+        let input = vec![b'x'; MAX_QUERY_BYTES + 128];
+        let mut reader = Cursor::new(input);
+
+        let result = read_bounded_query(&mut reader);
+
+        assert!(result.is_err());
+        assert_eq!(
+            reader.stream_position()?,
+            u64::try_from(MAX_QUERY_BYTES + 1)?
+        );
+        Ok(())
     }
 }

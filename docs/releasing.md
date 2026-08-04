@@ -56,6 +56,9 @@ Extract the archive and exercise:
 ```bash
 fixcard --version
 fixcard --help
+fix --version
+fix --help
+fix ./fixcard --version
 ```
 
 For an SBOM attestation, supply the CycloneDX predicate URI shown by GitHub's

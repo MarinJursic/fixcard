@@ -3,7 +3,32 @@
 Fixcard can recall repository, clone-private, and user-global knowledge. It also
 works outside Git when user-global cards are available.
 
-## 1. Capture a failure safely
+## 1. Paste a failure safely
+
+After a command has already failed, run only `fix`:
+
+```console
+$ fix
+Paste failure text, press Enter, type `END-7K4M2P9QX6R3A`, then press Enter. To cancel, press Ctrl-C, type `CANCEL-4H8N2W5D7S9KF`, and press Enter. Input is hidden, used once, and not saved.
+```
+
+Paste the failure, press Enter, type the displayed token on its own line, and
+press Enter. The token is randomly generated for that invocation. Input is
+hidden while Fixcard's raw terminal reader is active, so pasted control bytes
+cannot terminate the read and escape to the shell. The same flow works on
+Windows. Input is bounded to 1 MiB, used for one local lookup, and not persisted;
+oversized text is discarded until the completion token arrives.
+
+Because raw mode treats Ctrl-C as data, cancellation is also framed safely:
+press Ctrl-C, type the separately displayed random `CANCEL-...` token, and press
+Enter. This consumes any pending paste instead of returning it to the shell.
+
+A standalone process cannot portably recover earlier terminal output. Fixcard
+therefore asks for an explicit paste instead of inspecting clipboard contents,
+terminal scrollback, shell history, or arbitrary logs, and it never silently
+reruns the previous command.
+
+## 2. Capture an anticipated command safely
 
 The shortest reliable workflow is to let the installed `fix` companion observe
 an explicit command:
@@ -28,12 +53,11 @@ It also accepts existing output and needs no shell activation:
 journalctl -u example --no-pager | fix
 ```
 
-With no arguments it delegates to bare `fixcard`: piped text is searched, while
-an interactive terminal shows storage status and next steps. The compatibility
-shell function is documented in the
+With piped input and no arguments it performs the same local lookup without an
+interactive prompt. The compatibility shell function is documented in the
 [installation guide](installation.md#shell-completion-and-compatibility).
 
-## 2. Look up text you already have
+## 3. Look up text you already have
 
 Pass stable error fragments as arguments:
 
@@ -51,11 +75,7 @@ Avoid `some-command 2>&1 | fixcard fix` as a command wrapper: an ordinary shell
 pipeline can report Fixcard's status instead of the failing command's status.
 Use `fixcard run -- some-command` for that case.
 
-Fixcard reads only supplied text. It does not inspect clipboard contents,
-terminal scrollback, shell history, or arbitrary logs, and it never silently
-reruns a previous command.
-
-## 3. Read the result before acting
+## 4. Read the result before acting
 
 A strong result includes the complete resolution in the same invocation. It
 also shows the origin, declared risk, applicability, evidence date, and recorded
@@ -82,7 +102,7 @@ weak candidates:
 fixcard fix --explain --all ERR_EXAMPLE
 ```
 
-## 4. Save a fix you proved
+## 5. Save a fix you proved
 
 After deliberately solving and validating a real failure:
 
@@ -119,7 +139,7 @@ git commit
 Global scope is not a substitute for team scope. Use it for truly portable
 personal knowledge; use `.fixcards/` when repository conditions matter.
 
-## 5. Understand provenance labels
+## 6. Understand provenance labels
 
 - `repository-committed` means the exact parsed file bytes match the blob at
   `HEAD`; it does not claim human review, a trusted author, or a trusted remote.

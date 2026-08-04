@@ -26,6 +26,7 @@ Network services are outside the runtime data flow.
 | Stale fix presented as current | `last_verified`, configurable staleness warning, retired/superseded lifecycle |
 | Symlink or path traversal | stable ID validation, reject card-directory symlinks, ignore symlinked card files, no path construction from an unvalidated ID |
 | Resource exhaustion | bounded entries, cards, aggregate and per-card bytes, anchors, extensions, queries, output tails, and diagnostics; linear-time regexes only |
+| Accidental collection of prior terminal context | bare `fix` reads only an explicit bounded paste through a raw, per-invocation random-token frame; no clipboard, scrollback, history, arbitrary-log, or background capture |
 | Git option or command injection | fixed Git argv, `--` before paths, no shell invocation, non-interactive environment |
 | Shell injection through `run --` | direct argv spawn without a shell; refuse Windows batch formats; card text never becomes argv |
 | One malformed or colliding card hides valid cards | per-card quarantine during lookup, scoped duplicate addressing, strict lint remains separate |
@@ -43,6 +44,17 @@ status under recorded conditions.
 
 - No card content is executed.
 - `run --` executes only user-supplied argv and preserves a failing child status.
+- Interactive paste reads only standard input through a raw terminal frame with
+  a cryptographically random completion token, is bounded to 1 MiB, and is not
+  persisted. Control bytes remain query data, and oversized input is discarded
+  until the frame closes so no tail returns to the shell. Ctrl-C arms a separate
+  random cancellation frame instead of exiting with unread input. Catchable
+  Unix termination signals restore terminal mode before being re-raised. A
+  synchronization gate covers the transition into raw mode.
+  Redirected prompts and, on Unix, split input/prompt terminals are rejected
+  before raw mode so the random completion and cancellation tokens stay visible.
+  The Unix `fix` companion replaces its process with `fixcard`, preventing a
+  wrapper-only termination signal from orphaning the raw-mode owner.
 - No runtime network request is made.
 - Team files are not written without explicit `--team` intent and preview.
 - A finding that resembles a secret blocks team-save by default.

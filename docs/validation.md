@@ -31,6 +31,8 @@ worksheets, and the public aggregate-report structure.
 - a 1,000-card benchmark is gated below the 100 ms p95 lookup target on the CI
   reference runner;
 - optimized process startup is gated below the 75 ms p95 target;
+- installed-`fix` pseudo-terminal regressions reject hidden and split prompt
+  terminals, stress SIGTERM during startup, and verify terminal state is restored;
 - dependencies are locked, audited, policy-checked, and reviewed;
 - third-party CI actions are commit-pinned and release archives are extracted
   and smoke-tested before publication.

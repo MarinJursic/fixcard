@@ -147,12 +147,54 @@ fn installed_fix_uses_the_one_step_piped_lookup_flow() {
 }
 
 #[test]
+fn explicit_paste_mode_reads_one_shot_standard_input() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "--paste"])
+        .write_stdin("E_GENERATED_STALE generated-client")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Run the repository generator and review its diff.",
+        ))
+        .stderr(predicate::str::contains("Paste failure text").not());
+}
+
+#[test]
+fn paste_mode_rejects_empty_input() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "--paste"])
+        .write_stdin("")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("no failure text received"));
+}
+
+#[test]
+fn paste_mode_enforces_the_query_size_limit() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "--paste"])
+        .write_stdin(vec![b'x'; 1024 * 1024 + 1])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "query exceeds the 1048576-byte safety limit",
+        ));
+}
+
+#[test]
 fn installed_fix_has_its_own_help_and_version() {
     cargo_bin_cmd!("fix")
         .arg("--help")
         .assert()
         .success()
         .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
+        .stdout(predicate::str::contains("Bare fix prompts"))
         .stdout(predicate::str::contains("never invokes a shell"));
     cargo_bin_cmd!("fix")
         .arg("--version")
@@ -396,6 +438,9 @@ fn status_surfaces_the_installed_literal_fix_workflow() {
         .arg("status")
         .assert()
         .success()
+        .stdout(predicate::str::contains(
+            "fix                    # paste a failure",
+        ))
         .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
         .stdout(predicate::str::contains("existing-output | fix"))
         .stdout(predicate::str::contains("shell-init").not());
@@ -412,7 +457,7 @@ fn shell_init_generates_an_explicit_fix_wrapper() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "if [ \"$#\" -eq 0 ]; then command fixcard",
+            "if [ \"$#\" -eq 0 ]; then command fixcard fix --paste",
         ))
         .stdout(predicate::str::contains(
             "else command fixcard run -- \"$@\"",
@@ -424,7 +469,7 @@ fn shell_init_generates_an_explicit_fix_wrapper() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "if test (count $argv) -eq 0; command fixcard",
+            "if test (count $argv) -eq 0; command fixcard fix --paste",
         ))
         .stdout(predicate::str::contains(
             "else; command fixcard run -- $argv",
@@ -436,7 +481,7 @@ fn shell_init_generates_an_explicit_fix_wrapper() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "if ($args.Count -eq 0) { & fixcard } else { & fixcard run -- @args }",
+            "if ($args.Count -eq 0) { & fixcard fix --paste } else { & fixcard run -- @args }",
         ));
 }
 

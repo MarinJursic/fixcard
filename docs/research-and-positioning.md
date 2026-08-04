@@ -38,9 +38,10 @@ format—not the invention of searchable notes.
 
 The research rejected shell-history scraping, silent command reruns, command
 correction, general runbooks, public fix sharing, CI log warehousing, agent
-memory, cloud sync, and automatic execution. Explicit `run --` capture was kept
-because it is bounded, local, status-preserving, and honest about which output
-was observed.
+memory, cloud sync, and automatic execution. Explicit `run --` capture and the
+one-shot bare-`fix` paste were kept because they are bounded, local, and honest
+about which output was supplied. Command capture also preserves the child
+status; after-the-fact paste never pretends it recovered earlier output.
 
 ## Evidence discipline
 
