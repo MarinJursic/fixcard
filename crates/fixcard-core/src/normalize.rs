@@ -75,7 +75,8 @@ pub struct NormalizedFailure {
 #[must_use]
 pub fn normalize_failure(input: &str) -> NormalizedFailure {
     let safe = normalize_lines(&sanitize_terminal(input));
-    let mut text = safe.nfkc().collect::<String>().to_lowercase();
+    let lower = safe.nfkc().collect::<String>().to_lowercase();
+    let mut text = lower.nfkc().collect::<String>();
     for (regex, replacement) in [
         (&*TIMESTAMP, "<timestamp>"),
         (&*UUID, "<uuid>"),
@@ -196,6 +197,13 @@ mod tests {
         let second = normalize_failure("host=runner-999 config.toml:84:2 completed in 9 seconds");
         assert_eq!(first, second);
         assert!(first.text.contains("config.toml"));
+    }
+
+    #[test]
+    fn recomposes_characters_introduced_by_lowercasing() {
+        let once = normalize_failure("W\u{30a}");
+        assert_eq!(once.text, "\u{1e98}");
+        assert_eq!(once, normalize_failure(&once.text));
     }
 
     proptest! {
