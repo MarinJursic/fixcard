@@ -15,32 +15,33 @@ covering more than one ecosystem and both personal and team use where possible.
 ## Start
 
 The only registered Stage 3 build is
-[`1.0.0-rc.6`](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.6),
-at commit `6a10e0556576a80e481a2ca362544f81bd05977f`. Observations made before
+[`1.0.0-rc.4`](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.4),
+at commit `acf0c07944700085d56f50a02b26bbdf2525272d`. Observations made before
 2026-08-10 or with another version are ineligible. No evidence from an earlier
-candidate carries forward.
+or later candidate carries into this treatment.
 
-1. Install the exact `1.0.0-rc.6` release archive from the link above. A
+1. Install the exact `1.0.0-rc.4` release archive from the link above. A
    coordinator who uses Homebrew must install the immutable formula at tap
-   commit `4540692a35180a8efa353c2cd8cadc46fc019750`; the moving tap head is not
+   commit `c22efbe78064a8c78192b778e270bb936e2cdb4d`; the moving tap head is not
    eligible pilot installation evidence.
 
    ```sh
    formula_dir=$(mktemp -d)
    curl --fail --location --silent --show-error \
      --output "$formula_dir/fixcard.rb" \
-     https://raw.githubusercontent.com/MarinJursic/homebrew-tap/4540692a35180a8efa353c2cd8cadc46fc019750/Formula/fixcard.rb
+     https://raw.githubusercontent.com/MarinJursic/homebrew-tap/c22efbe78064a8c78192b778e270bb936e2cdb4d/Formula/fixcard.rb
    brew install --formula "$formula_dir/fixcard.rb"
    ```
 
 2. Run both `fixcard --version` and `fix --version`. Each must report its own
-   command name followed by `1.0.0-rc.6`; otherwise stop and correct the
+   command name followed by `1.0.0-rc.4`; otherwise stop and correct the
    installation before collecting observations.
 3. Run `fixcard status` and confirm the expected storage paths.
 4. Choose repository, clone-private, or user-global scope deliberately.
-5. After an ordinary failure, run bare `fix` and paste its stable failure text.
-   When anticipating a failure, use `fix PROGRAM [ARGS...]` or its explicit
-   `fixcard run -- PROGRAM [ARGS...]` equivalent.
+5. When anticipating a failure, use `fix PROGRAM [ARGS...]` or its explicit
+   `fixcard run -- PROGRAM [ARGS...]` equivalent. For existing output, pipe the
+   saved output into `fix`; bare interactive `fix` in RC4 shows status and next
+   steps and is not a paste interface.
 6. Do not create synthetic successes. Record normal development incidents.
 
 Before the first incident and again at the start of every weekly period, record

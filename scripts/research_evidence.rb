@@ -183,7 +183,7 @@ module ResearchEvidence
     expected_commit = registration.dig("pilot", "commit").to_s
 
     errors << "registration: schema_version must be 1" unless registration["schema_version"] == 1
-    errors << "registration: status must be pre_data_amendment" unless registration["status"] == "pre_data_amendment"
+    errors << "registration: status must be pre_data_registration" unless registration["status"] == "pre_data_registration"
     registered_on = begin
       Date.iso8601(registration.fetch("registered_on"))
     rescue ArgumentError, KeyError, TypeError
@@ -296,8 +296,9 @@ module ResearchEvidence
       errors << "registration: exact pilot tag does not resolve to the product commit" if status.success? && resolved.strip != product_commit
     end
 
-    cargo_version = ROOT.join("Cargo.toml").read[/^version\s*=\s*"([^"]+)"/, 1]
-    errors << "registration: Cargo.toml version does not match the exact pilot build" unless cargo_version == version
+    cargo_source, _stderr, cargo_status = Open3.capture3("git", "-C", ROOT.to_s, "show", "#{product_commit}:Cargo.toml")
+    cargo_version = cargo_source[/^version\s*=\s*"([^"]+)"/, 1] if cargo_status.success?
+    errors << "registration: product commit Cargo.toml version does not match the exact pilot build" unless cargo_version == version
     errors
   end
 

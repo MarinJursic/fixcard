@@ -1,6 +1,6 @@
 name: Sanitized cross-repository validation summary
-description: Submit one coordinator-reviewed aggregate after the full RC6 study; never submit repository-week rows.
-title: "[validation]: RC6 cross-repository summary"
+description: Submit one coordinator-reviewed aggregate after the full RC4 study; never submit repository-week rows.
+title: "[validation]: RC4 cross-repository summary"
 labels: [validation]
 body:
   - type: markdown
@@ -28,7 +28,7 @@ body:
       label: Exact registered pilot build
       description: Reports from any other build are ineligible and cannot be carried forward.
       options:
-        - 1.0.0-rc.6
+        - 1.0.0-rc.4
     validations:
       required: true
 
@@ -37,7 +37,7 @@ body:
     attributes:
       label: Protocol confirmation
       options:
-        - label: Every Stage 2 and Stage 3 row records `1.0.0-rc.6`, and both `fixcard --version` and `fix --version` were rechecked at the start of every weekly period.
+        - label: Every Stage 2 and Stage 3 row records `1.0.0-rc.4`, and both `fixcard --version` and `fix --version` were rechecked at the start of every weekly period.
           required: true
         - label: Stage 3 began on or after 2026-08-10 and used four consecutive, non-overlapping seven-day periods in 5–8 active repositories.
           required: true

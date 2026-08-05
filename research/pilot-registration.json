@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "pre_data_amendment",
+  "status": "pre_data_registration",
   "registered_on": "2026-08-05",
   "protocol": {
     "commit": "065d38a902f998acab2eab9eb7432554abb7dacd",
@@ -23,8 +23,8 @@
     "public_data_policy": "sanitized_cross_repository_aggregates_with_small_cell_suppression"
   },
   "amendment": {
-    "supersedes_version": "1.0.0-rc.5",
-    "reason": "RC5 contained the intended bare-fix workflow but its Unicode normalization pipeline was not idempotent for all inputs. The corrected build was frozen before any eligible external observation was submitted.",
+    "supersedes_version": "1.0.0-rc.3",
+    "reason": "RC4 was frozen as the exact Stage 3 treatment before any eligible external observation. Later product and usability builds do not qualify for the security-fix restart exception and are excluded from this pilot.",
     "carry_forward_eligible_evidence": false,
     "eligible_evidence_at_registration": {
       "permissioned_second_reviewed_real_pairs": 0,
@@ -36,9 +36,9 @@
     }
   },
   "pilot": {
-    "version": "1.0.0-rc.6",
-    "tag": "v1.0.0-rc.6",
-    "commit": "6a10e0556576a80e481a2ca362544f81bd05977f",
+    "version": "1.0.0-rc.4",
+    "tag": "v1.0.0-rc.4",
+    "commit": "acf0c07944700085d56f50a02b26bbdf2525272d",
     "eligible_observations_on_or_after": "2026-08-10",
     "working_weeks": 4,
     "stable_decision_after_weeks": 8,
@@ -50,21 +50,21 @@
     "security_fix_rule": "stop_document_and_preregister_restart"
   },
   "release": {
-    "url": "https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.6",
-    "workflow_url": "https://github.com/MarinJursic/fixcard/actions/runs/30984877313",
+    "url": "https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.4",
+    "workflow_url": "https://github.com/MarinJursic/fixcard/actions/runs/30926021852",
     "prerelease": true,
     "asset_count": 8,
     "sbom_asset": "fixcard.cdx.json",
     "checksum_asset": "SHA256SUMS",
-    "homebrew_formula_commit": "4540692a35180a8efa353c2cd8cadc46fc019750",
-    "homebrew_formula_url": "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/4540692a35180a8efa353c2cd8cadc46fc019750/Formula/fixcard.rb",
+    "homebrew_formula_commit": "c22efbe78064a8c78192b778e270bb936e2cdb4d",
+    "homebrew_formula_url": "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/c22efbe78064a8c78192b778e270bb936e2cdb4d/Formula/fixcard.rb",
     "archive_sha256": {
-      "fixcard-1.0.0-rc.6-aarch64-apple-darwin.tar.gz": "faec6a30e09b03bed3912085f0279a5162f7c72e2f2fdc3984ee59f402506133",
-      "fixcard-1.0.0-rc.6-aarch64-unknown-linux-gnu.tar.gz": "946f2edb791858a43029460f5b98cb8c414558bb01e47258e296537407a673a7",
-      "fixcard-1.0.0-rc.6-x86_64-apple-darwin.tar.gz": "202f32719d7b39c253605d62a342938beb9ad0bc77bbeefff1c93670c2670bd7",
-      "fixcard-1.0.0-rc.6-x86_64-pc-windows-msvc.zip": "50db658b2e9c03c6dc6a44108ff36f4766dfd3022cbdf052d4776f9ca579a844",
-      "fixcard-1.0.0-rc.6-x86_64-unknown-linux-gnu.tar.gz": "64f7bf28f470303dd06bb9b1b938a69ce7650fa4c6719cbff466ecde694e8cdb",
-      "fixcard-1.0.0-rc.6-x86_64-unknown-linux-musl.tar.gz": "6dd0a0fafb7d7638db37ce521eb8c4aa21b107e017a10152f7c1f20739861bf6"
+      "fixcard-1.0.0-rc.4-aarch64-apple-darwin.tar.gz": "9b9d28e7bc637ac6beb7f5c86175888ecc826b64aac1cd4de9116ef98306f0a0",
+      "fixcard-1.0.0-rc.4-aarch64-unknown-linux-gnu.tar.gz": "fd1102510c4ec90753a3ae45bbc2bbda07ee666b11bfb5d78abd25403c082c90",
+      "fixcard-1.0.0-rc.4-x86_64-apple-darwin.tar.gz": "ec17d3d9cb856b9b6d2acd7ce866ffbaf4fbcfd4ee9ef9702d403b427cfc2780",
+      "fixcard-1.0.0-rc.4-x86_64-pc-windows-msvc.zip": "17d1c47875aaae8971a620608a5b236e5f79d4a1b8d697b893591b27f8e2b60d",
+      "fixcard-1.0.0-rc.4-x86_64-unknown-linux-gnu.tar.gz": "513b4e0d4ca03def2749c555c8d85e8bf3f3e7d00847f17f3a3c503583b3237f",
+      "fixcard-1.0.0-rc.4-x86_64-unknown-linux-musl.tar.gz": "49cfce7b2d20588694446f1f25a325bd296b525148fb246cd27c92a911bdd139"
     }
   },
   "fixed_gates": {

@@ -4,16 +4,18 @@ Last assessed: 2026-08-05.
 
 ## Decision
 
-**Insufficient evidence — remain on `1.0.0-rc.6`.** Engineering verification is
-green, but no eligible primary-research or dogfood report has been submitted.
-Missing evidence is not treated as a zero, a pass, or a reconstructed estimate.
+**Insufficient evidence — keep stable 1.0 unreleased.** The exact Stage 3
+treatment remains `1.0.0-rc.4`. Newer candidates are engineering builds and do
+not replace RC4 because no qualifying security-fix restart was invoked. No
+eligible primary-research or dogfood report has been submitted. Missing
+evidence is not treated as a zero, a pass, or a reconstructed estimate.
 
 The machine-readable
 [`pilot-registration.json`](../research/pilot-registration.json) is a pre-data
-amendment that freezes `1.0.0-rc.6`, commit
-`6a10e0556576a80e481a2ca362544f81bd05977f`, six archive digests, an eligible
+registration that freezes `1.0.0-rc.4`, commit
+`acf0c07944700085d56f50a02b26bbdf2525272d`, six archive digests, an eligible
 start date of 2026-08-10, all fixed gates, and all ten kill criteria. It records
-zero eligible evidence at registration and carries nothing forward from RC5.
+zero eligible evidence at registration and carries nothing across builds.
 
 ## Evidence ledger
 
@@ -22,7 +24,7 @@ zero eligible evidence at registration and carries nothing forward from RC5.
 | Evidence corpus | At least 100 sanitized real failure/resolution pairs with permission and second-person review | None submitted | Not started / not documented |
 | Problem diary | 24–30 developers across the specified contexts, roles, and platforms for two working weeks | None submitted | Not started / not documented |
 | Concierge workflow | Three real cards per participant plus controlled recurrences and maintainer review | None submitted | Not started / not documented |
-| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.6` published 2026-08-05 and preregistered before eligible collection; no eligible report issues submitted | Not started / insufficient |
+| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.4` published 2026-08-04 and registered before eligible collection; no eligible report issues submitted | Not started / insufficient |
 
 All product thresholds therefore remain unproven, including recurrence
 frequency, concierge creation time, seeded retrieval precision, comparative
@@ -31,11 +33,11 @@ privacy false-positive burden, differentiation, and maintenance burden.
 
 ## Verified engineering baseline
 
-Release candidate `1.0.0-rc.6` at commit
+The latest engineering candidate, `1.0.0-rc.6` at commit
 [`6a10e055`](https://github.com/MarinJursic/fixcard/commit/6a10e0556576a80e481a2ca362544f81bd05977f)
 passes 84 repository tests, hosted Linux/macOS/Windows checks, Rust 1.85
-compatibility, dependency and policy audits, documentation and research-form
-validation, and performance gates. The exact post-merge commit passed
+compatibility, dependency and policy audits, documentation and performance
+gates. It is not eligible RC4 pilot evidence. The exact post-merge commit passed
 [CI](https://github.com/MarinJursic/fixcard/actions/runs/30984540106) and
 [security](https://github.com/MarinJursic/fixcard/actions/runs/30984540104).
 
@@ -68,8 +70,8 @@ on x86_64/ARM Linux and Intel/Apple Silicon macOS. A clean installation from
 the public tap was then repeated on Apple Silicon. These results prove the
 implementation and distribution baseline; they do not prove product behavior.
 
-The research-kit checker accepts exact RC6 Stage 2 and Stage 3 rows and
-deliberately mutates them to prove that RC5 and blank versions are rejected.
+The research-kit checker accepts exact RC4 Stage 2 and Stage 3 rows and
+deliberately mutates them to prove that RC3 and blank versions are rejected.
 The standalone validator also rejects malformed input, observations before the
 eligible date, missing complete-pilot fields, selective timing samples,
 impossible partial totals, duplicate repository-weeks, decreasing cumulative
