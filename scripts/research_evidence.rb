@@ -3,21 +3,49 @@
 
 require "csv"
 require "date"
+require "digest"
 require "json"
+require "open3"
 require "pathname"
 
 module ResearchEvidence
   ROOT = Pathname.new(__dir__).join("..").cleanpath
   REGISTRATION_PATH = ROOT.join("research", "pilot-registration.json")
+  STAGE_2_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-2-observations.csv")
   STAGE_3_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-repository-weeks.csv")
+  STAGE_3_USER_REUSE_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-active-user-reuse.csv")
+  STAGE_3_CARD_REUSE_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-eight-week-card-reuse.csv")
+
+  MAX_INPUT_BYTES = 10 * 1024 * 1024
+  MAX_FIELD_BYTES = 100_000
+
+  STAGE_2_HEADERS = %w[
+    participant_alias card_alias maintainer_alias fixcard_version
+    creation_seconds controlled_variants correct_rank_one
+    fixcard_lookup_seconds_samples normal_search_seconds_samples
+    metadata_confusion_observed privacy_edits scanner_false_positives
+    trust_preferred maintainer_decision
+  ].freeze
+
+  STAGE_3_USER_REUSE_HEADERS = %w[
+    participant_alias fixcard_version active_during_weeks_1_4
+    reused_or_teammate_reused_during_weeks_1_4
+  ].freeze
+
+  STAGE_3_CARD_REUSE_HEADERS = %w[
+    repository_alias card_alias fixcard_version authored_on follow_up_end
+    available_to_teammates reused_by_other_person_by_week_8
+  ].freeze
 
   STAGE_3_HEADERS = %w[
-    repository_alias week fixcard_version pilot_users weekly_active_users
+    repository_alias week observation_start observation_end fixcard_version
+    pilot_users weekly_active_users
     active_users_with_three_cards lookup_attempts strong_matches
     relevant_strong_matches correct_abstentions incorrect_abstentions
     search_p95_ms end_to_end_lookup_seconds_samples
     full_lookups_under_ten_seconds fixcard_used_first other_tool_used_first
-    authored_cards capture_seconds_samples cumulative_unique_active_reusers
+    authored_cards capture_seconds_samples cumulative_unique_active_users
+    cumulative_unique_active_reusers
     author_reuses teammate_reuses shared_submitted shared_accepted
     shared_changed shared_rejected retired_cards scanner_catches
     scanner_false_positives users_bypassing_scanner_due_false_positives
@@ -33,7 +61,14 @@ module ResearchEvidence
 
   EXPECTED_PROTOCOL_DOCUMENTS = %w[
     docs/research-study.md docs/research-operations.md docs/validation.md
-    docs/dogfood.md
+    docs/dogfood.md research/templates/stage-1-participants.csv
+    research/templates/stage-2-observations.csv
+    research/templates/stage-3-repository-weeks.csv
+    research/templates/stage-3-active-user-reuse.csv
+    research/templates/stage-3-eight-week-card-reuse.csv
+    research/templates/aggregate-report.md
+    .github/ISSUE_TEMPLATE/validation-report.yml
+    scripts/research_evidence.rb scripts/check_research_kit.rb
   ].freeze
 
   EXPECTED_FIXED_GATES = {
@@ -63,11 +98,12 @@ module ResearchEvidence
       "correct_rank_one_share_minimum" => 0.7,
       "trust_preference_share_minimum" => 0.6,
       "distinct_maintainers_accepting_committed_cards_minimum" => 5,
+      "exact_registered_build_required" => true,
       "precision_denominator" => "all_observed_controlled_variants",
       "trust_denominator" => "participants_answering_once"
     },
     "stage_3" => {
-      "strong_rank_one_relevance_share_minimum" => 0.75,
+      "strong_rank_one_relevance_share_minimum" => 0.8,
       "strong_rank_one_relevance_target" => 0.85,
       "search_p95_ms_maximum" => 100,
       "full_lookup_under_ten_seconds_share_minimum_exclusive" => 0.5,
@@ -75,6 +111,7 @@ module ResearchEvidence
       "median_capture_seconds_maximum" => 20,
       "active_users_with_three_cards_share_minimum" => 0.5,
       "active_user_reuse_share_minimum" => 0.3,
+      "active_user_reuse_denominator" => "globally_deduplicated_active_pilot_users_through_week_four",
       "shared_cards_accepted_minimum" => 5,
       "repositories_with_accepted_shared_cards_minimum" => 2,
       "serious_trust_incidents_maximum" => 0,
@@ -82,7 +119,8 @@ module ResearchEvidence
       "users_bypassing_scanner_due_false_positives_maximum" => 0,
       "differentiation_share_requirement" => "strict_majority",
       "maintenance_acceptable_share_minimum_exclusive" => 0.5,
-      "maintenance_denominator" => "final_week_repository_responses"
+      "maintenance_denominator" => "final_week_repository_responses",
+      "every_triggered_kill_criterion_overrides_passing_metric_gates" => true
     },
     "stable_promotion" => "milestone_0_and_every_stage_and_every_kill_criterion_reviewed"
   }.freeze
@@ -104,7 +142,8 @@ module ResearchEvidence
     pilot_users weekly_active_users active_users_with_three_cards lookup_attempts
     strong_matches relevant_strong_matches correct_abstentions
     incorrect_abstentions full_lookups_under_ten_seconds fixcard_used_first
-    other_tool_used_first authored_cards cumulative_unique_active_reusers
+    other_tool_used_first authored_cards cumulative_unique_active_users
+    cumulative_unique_active_reusers
     author_reuses teammate_reuses shared_submitted shared_accepted
     shared_changed shared_rejected retired_cards scanner_catches
     scanner_false_positives missed_real_secrets serious_trust_incidents
@@ -121,18 +160,27 @@ module ResearchEvidence
   module_function
 
   def load_registration(path = REGISTRATION_PATH)
-    JSON.parse(File.read(path, encoding: "UTF-8"))
+    raise ArgumentError, "registration exceeds #{MAX_INPUT_BYTES} bytes" if File.size(path) > MAX_INPUT_BYTES
+
+    registration = JSON.parse(File.read(path, encoding: "UTF-8"))
+    raise ArgumentError, "registration top level must be an object" unless registration.is_a?(Hash)
+
+    registration
   rescue Errno::ENOENT => e
     raise ArgumentError, "missing registration: #{e.message}"
+  rescue EncodingError => e
+    raise ArgumentError, "invalid registration encoding: #{e.message}"
   rescue JSON::ParserError => e
     raise ArgumentError, "invalid registration JSON: #{e.message}"
   end
 
   def validate_registration(registration)
+    return ["registration: top level must be an object"] unless registration.is_a?(Hash)
+
     errors = []
-    expected_version = registration.dig("pilot", "version")
-    expected_tag = registration.dig("pilot", "tag")
-    expected_commit = registration.dig("pilot", "commit")
+    expected_version = registration.dig("pilot", "version").to_s
+    expected_tag = registration.dig("pilot", "tag").to_s
+    expected_commit = registration.dig("pilot", "commit").to_s
 
     errors << "registration: schema_version must be 1" unless registration["schema_version"] == 1
     errors << "registration: status must be pre_data_amendment" unless registration["status"] == "pre_data_amendment"
@@ -148,6 +196,8 @@ module ResearchEvidence
     protocol_commit = registration.dig("protocol", "commit").to_s
     errors << "registration: protocol commit must be a full SHA-1" unless protocol_commit.match?(/\A[0-9a-f]{40}\z/)
     errors << "registration: protocol commit must differ from the product build commit" if protocol_commit == expected_commit
+    errors << "registration: raw data must remain access-controlled" unless registration.dig("protocol", "raw_data_location") == "access_controlled_outside_public_repository"
+    errors << "registration: public data must be sanitized aggregates only" unless registration.dig("protocol", "public_data_policy") == "sanitized_cross_repository_aggregates_with_small_cell_suppression"
     errors << "registration: evidence must not carry forward" unless registration.dig("amendment", "carry_forward_eligible_evidence") == false
 
     counts = registration.dig("amendment", "eligible_evidence_at_registration")
@@ -160,6 +210,7 @@ module ResearchEvidence
     errors << "registration: repository maximum must be 8" unless registration.dig("pilot", "repositories", "maximum") == 8
     errors << "registration: build switching must be forbidden" unless registration.dig("pilot", "build_switching") == "forbidden"
     errors << "registration: security restart rule must be explicit" unless registration.dig("pilot", "security_fix_rule") == "stop_document_and_preregister_restart"
+    errors << "registration: stable review must wait eight weeks" unless registration.dig("pilot", "stable_decision_after_weeks") == 8
 
     eligible_on = begin
       Date.iso8601(registration.dig("pilot", "eligible_observations_on_or_after"))
@@ -184,11 +235,15 @@ module ResearchEvidence
     errors << "registration: release must contain eight assets" unless registration.dig("release", "asset_count") == 8
     errors << "registration: checksum asset must be SHA256SUMS" unless registration.dig("release", "checksum_asset") == "SHA256SUMS"
     errors << "registration: SBOM asset must be fixcard.cdx.json" unless registration.dig("release", "sbom_asset") == "fixcard.cdx.json"
+    formula_commit = registration.dig("release", "homebrew_formula_commit").to_s
+    errors << "registration: Homebrew formula commit must be a full SHA-1" unless formula_commit.match?(/\A[0-9a-f]{40}\z/)
+    expected_formula_url = "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/#{formula_commit}/Formula/fixcard.rb"
+    errors << "registration: Homebrew formula URL must be immutable" unless registration.dig("release", "homebrew_formula_url") == expected_formula_url
 
     errors << "registration: fixed gates differ from the predeclared protocol" unless registration["fixed_gates"] == EXPECTED_FIXED_GATES
 
     criteria = registration["kill_criteria"]
-    unless criteria.is_a?(Array) &&
+    unless criteria.is_a?(Array) && criteria.all? { |item| item.is_a?(Hash) } &&
            criteria.map { |item| item["id"] } == (1..10).to_a &&
            criteria.map { |item| item["criterion"] } == EXPECTED_KILL_CRITERIA
       errors << "registration: all ten kill criteria must be frozen in order"
@@ -196,18 +251,162 @@ module ResearchEvidence
 
     documents = Array(registration.dig("protocol", "documents"))
     errors << "registration: protocol document set differs" unless documents == EXPECTED_PROTOCOL_DOCUMENTS
-    documents.each do |document|
+    documents.select { |document| document.is_a?(String) }.each do |document|
       errors << "registration: missing protocol document #{document}" unless ROOT.join(document).file?
     end
 
+    errors.concat(validate_git_bindings(protocol_commit, expected_commit, expected_tag, expected_version, documents))
+
+    errors
+  rescue TypeError, NoMethodError
+    ["registration: nested values have invalid types"]
+  end
+
+  def validate_git_bindings(protocol_commit, product_commit, tag, version, documents)
+    return ["registration: validation must run from a full Git checkout"] unless ROOT.join(".git").exist?
+
+    errors = []
+    {
+      "protocol commit" => protocol_commit,
+      "product commit" => product_commit
+    }.each do |label, commit|
+      next unless commit.match?(/\A[0-9a-f]{40}\z/)
+
+      _stdout, _stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "cat-file", "-e", "#{commit}^{commit}")
+      errors << "registration: #{label} does not exist in this checkout" unless status.success?
+    end
+
+    if protocol_commit.match?(/\A[0-9a-f]{40}\z/)
+      documents.each do |document|
+        current_path = ROOT.join(document)
+        next unless current_path.file?
+
+        frozen, _stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "show", "#{protocol_commit}:#{document}")
+        if !status.success?
+          errors << "registration: #{document} is absent from the protocol commit"
+        elsif frozen.b != current_path.binread
+          errors << "registration: #{document} differs from the protocol commit"
+        end
+      end
+    end
+
+    if product_commit.match?(/\A[0-9a-f]{40}\z/) && tag.to_s.match?(/\Av1\.0\.0-rc\.\d+\z/)
+      resolved, _stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "rev-parse", "refs/tags/#{tag}^{commit}")
+      errors << "registration: exact pilot tag is missing" unless status.success?
+      errors << "registration: exact pilot tag does not resolve to the product commit" if status.success? && resolved.strip != product_commit
+    end
+
+    cargo_version = ROOT.join("Cargo.toml").read[/^version\s*=\s*"([^"]+)"/, 1]
+    errors << "registration: Cargo.toml version does not match the exact pilot build" unless cargo_version == version
     errors
   end
 
-  def validate_stage3_table(table, exact_version:, complete_pilot: false)
+  def validate_stage2_table(table, exact_version:)
+    errors = []
+    errors << "Stage 2 CSV: headers differ from the registered schema" unless table.headers == STAGE_2_HEADERS
+    seen_cards = {}
+
+    table.each_with_index do |row, index|
+      line = index + 2
+      participant = row["participant_alias"].to_s
+      card = row["card_alias"].to_s
+      version = row["fixcard_version"].to_s
+      errors << "line #{line}: participant_alias must look like P001" unless participant.match?(/\AP\d{3,}\z/)
+      errors << "line #{line}: card_alias must look like C001" unless card.match?(/\AC\d{3,}\z/)
+      errors << "line #{line}: duplicate card_alias #{card.inspect}" if seen_cards[card]
+      seen_cards[card] = true
+      errors << "line #{line}: fixcard_version must be exactly #{exact_version.inspect}, got #{version.inspect}" unless version == exact_version
+
+      %w[controlled_variants correct_rank_one privacy_edits scanner_false_positives].each do |field|
+        next if row[field].to_s.empty?
+
+        value = integer(row[field])
+        errors << "line #{line}: #{field} must be a non-negative integer or blank" unless value && value >= 0
+      end
+      variants = integer(row["controlled_variants"])
+      correct = integer(row["correct_rank_one"])
+      errors << "line #{line}: correct_rank_one cannot exceed controlled_variants" if variants && correct && correct > variants
+      unless row["creation_seconds"].to_s.empty? || (numeric?(row["creation_seconds"]) && row["creation_seconds"].to_f >= 0)
+        errors << "line #{line}: creation_seconds must be a non-negative number or blank"
+      end
+    end
+    errors
+  end
+
+  def validate_stage3_user_reuse_table(table, exact_version:)
+    errors = []
+    errors << "Stage 3 active-user CSV: headers differ from the registered schema" unless table.headers == STAGE_3_USER_REUSE_HEADERS
+    seen = {}
+    table.each_with_index do |row, index|
+      line = index + 2
+      participant = row["participant_alias"].to_s
+      errors << "line #{line}: participant_alias must look like P001" unless participant.match?(/\AP\d{3,}\z/)
+      errors << "line #{line}: duplicate participant_alias #{participant.inspect}" if seen[participant]
+      seen[participant] = true
+      version = row["fixcard_version"].to_s
+      errors << "line #{line}: fixcard_version must be exactly #{exact_version.inspect}, got #{version.inspect}" unless version == exact_version
+      %w[active_during_weeks_1_4 reused_or_teammate_reused_during_weeks_1_4].each do |field|
+        errors << "line #{line}: #{field} must be true or false" unless %w[true false].include?(row[field].to_s)
+      end
+      if row["reused_or_teammate_reused_during_weeks_1_4"] == "true" && row["active_during_weeks_1_4"] != "true"
+        errors << "line #{line}: an inactive participant cannot count as an active reuser"
+      end
+    end
+    errors
+  end
+
+  def validate_stage3_card_reuse_table(table, exact_version:, eligible_on:, pilot_periods: nil)
+    errors = []
+    errors << "Stage 3 eight-week card CSV: headers differ from the registered schema" unless table.headers == STAGE_3_CARD_REUSE_HEADERS
+    seen = {}
+    table.each_with_index do |row, index|
+      line = index + 2
+      repository = row["repository_alias"].to_s
+      card = row["card_alias"].to_s
+      key = [repository, card]
+      errors << "line #{line}: repository_alias must look like R001" unless repository.match?(/\AR\d{3,}\z/)
+      errors << "line #{line}: card_alias must look like C001" unless card.match?(/\AC\d{3,}\z/)
+      errors << "line #{line}: duplicate repository/card #{key.inspect}" if seen[key]
+      seen[key] = true
+      version = row["fixcard_version"].to_s
+      errors << "line #{line}: fixcard_version must be exactly #{exact_version.inspect}, got #{version.inspect}" unless version == exact_version
+      authored_on = iso_date(row["authored_on"])
+      follow_up_end = iso_date(row["follow_up_end"])
+      errors << "line #{line}: authored_on must be a real YYYY-MM-DD date" unless authored_on
+      errors << "line #{line}: follow_up_end must be a real YYYY-MM-DD date" unless follow_up_end
+      errors << "line #{line}: authored_on predates the eligible window" if authored_on && eligible_on && authored_on < eligible_on
+      if authored_on && follow_up_end
+        errors << "line #{line}: follow_up_end must be after authored_on" unless follow_up_end > authored_on
+      end
+      if pilot_periods
+        period = pilot_periods[repository]
+        if period.nil?
+          errors << "line #{line}: repository_alias is absent from the complete pilot"
+        elsif !period.values_at(:start, :core_end, :follow_up_end).all?
+          errors << "line #{line}: repository pilot periods are incomplete"
+        elsif authored_on && follow_up_end
+          errors << "line #{line}: authored_on must fall within that repository's weeks 1–4" unless (period[:start]..period[:core_end]).cover?(authored_on)
+          errors << "line #{line}: follow_up_end must equal the end of that repository's week eight" unless follow_up_end == period[:follow_up_end]
+        end
+      end
+      %w[available_to_teammates reused_by_other_person_by_week_8].each do |field|
+        errors << "line #{line}: #{field} must be true or false" unless %w[true false].include?(row[field].to_s)
+      end
+      if row["reused_by_other_person_by_week_8"] == "true" && row["available_to_teammates"] != "true"
+        errors << "line #{line}: a card unavailable to teammates cannot count as teammate-reused"
+      end
+    end
+    errors
+  end
+
+  def validate_stage3_table(table, exact_version:, eligible_on: nil, complete_pilot: false)
     errors = []
     errors << "Stage 3 CSV: headers differ from the registered schema" unless table.headers == STAGE_3_HEADERS
     seen_repository_weeks = {}
     pilot_users_by_repository = {}
+    periods_by_repository = Hash.new { |hash, key| hash[key] = [] }
+    weekly_active_totals = Hash.new(0)
+    active_users_by_repository = Hash.new { |hash, key| hash[key] = [] }
     reusers_by_repository = Hash.new { |hash, key| hash[key] = [] }
 
     table.each_with_index do |row, index|
@@ -215,10 +414,25 @@ module ResearchEvidence
       repository = row["repository_alias"].to_s
       version = row["fixcard_version"].to_s
       week = integer(row["week"])
+      observation_start = iso_date(row["observation_start"])
+      observation_end = iso_date(row["observation_end"])
 
       errors << "line #{line}: repository_alias must look like R001" unless repository.match?(/\AR\d{3,}\z/)
       errors << "line #{line}: fixcard_version must be exactly #{exact_version.inspect}, got #{version.inspect}" unless version == exact_version
       errors << "line #{line}: week must be an integer from 1 through 4" unless week && (1..4).cover?(week)
+      if !row["observation_start"].to_s.empty? && observation_start.nil?
+        errors << "line #{line}: observation_start must be a real YYYY-MM-DD date"
+      end
+      if !row["observation_end"].to_s.empty? && observation_end.nil?
+        errors << "line #{line}: observation_end must be a real YYYY-MM-DD date"
+      end
+      if observation_start && observation_end
+        errors << "line #{line}: each repository-week must span exactly seven calendar days" unless observation_end - observation_start == 6
+        errors << "line #{line}: observation_start predates the eligible window" if eligible_on && observation_start < eligible_on
+        periods_by_repository[repository] << [week, observation_start, observation_end, line] if week
+      elsif complete_pilot
+        errors << "line #{line}: observation_start and observation_end are required for a complete pilot"
+      end
 
       key = [repository, week]
       errors << "line #{line}: duplicate repository/week #{key.inspect}" if seen_repository_weeks.key?(key)
@@ -237,6 +451,13 @@ module ResearchEvidence
         end
       end
 
+      if complete_pilot
+        required_counts = COUNT_FIELDS - %w[differentiation_yes differentiation_responses]
+        required_counts.each do |field|
+          errors << "line #{line}: #{field} is required for a complete pilot; use 0 when observed zero" unless counts.key?(field)
+        end
+      end
+
       errors << "line #{line}: pilot_users must be at least 1 when reported" if counts["pilot_users"] == 0
 
       validate_upper_bound(errors, line, counts, "weekly_active_users", "pilot_users")
@@ -246,7 +467,8 @@ module ResearchEvidence
       %w[full_lookups_under_ten_seconds fixcard_used_first other_tool_used_first].each do |field|
         validate_upper_bound(errors, line, counts, field, "lookup_attempts")
       end
-      validate_upper_bound(errors, line, counts, "cumulative_unique_active_reusers", "pilot_users")
+      validate_upper_bound(errors, line, counts, "cumulative_unique_active_users", "pilot_users")
+      validate_upper_bound(errors, line, counts, "cumulative_unique_active_reusers", "cumulative_unique_active_users")
       %w[shared_accepted shared_changed shared_rejected].each do |field|
         validate_upper_bound(errors, line, counts, field, "shared_submitted")
       end
@@ -254,18 +476,24 @@ module ResearchEvidence
       validate_upper_bound(errors, line, counts, "differentiation_responses", "pilot_users")
       validate_upper_bound(errors, line, counts, "users_bypassing_scanner_due_false_positives", "pilot_users")
 
-      if counts.values_at("strong_matches", "correct_abstentions", "incorrect_abstentions", "lookup_attempts").all?
-        classified = counts["strong_matches"] + counts["correct_abstentions"] + counts["incorrect_abstentions"]
-        errors << "line #{line}: strong matches plus abstentions must equal lookup_attempts" unless classified == counts["lookup_attempts"]
+      if counts["lookup_attempts"]
+        classified = %w[strong_matches correct_abstentions incorrect_abstentions].sum { |field| counts.fetch(field, 0) }
+        errors << "line #{line}: reported strong matches plus abstentions cannot exceed lookup_attempts" if classified > counts["lookup_attempts"]
+        if complete_pilot && classified != counts["lookup_attempts"]
+          errors << "line #{line}: strong matches plus abstentions must equal lookup_attempts for a complete pilot"
+        end
       end
 
-      if counts.values_at("fixcard_used_first", "other_tool_used_first", "lookup_attempts").all?
-        first_tool_total = counts["fixcard_used_first"] + counts["other_tool_used_first"]
+      if counts["lookup_attempts"]
+        first_tool_total = %w[fixcard_used_first other_tool_used_first].sum { |field| counts.fetch(field, 0) }
         errors << "line #{line}: first-tool counts cannot exceed lookup_attempts" if first_tool_total > counts["lookup_attempts"]
+        if complete_pilot && first_tool_total != counts["lookup_attempts"]
+          errors << "line #{line}: first-tool counts must equal lookup_attempts for a complete pilot"
+        end
       end
 
-      if counts.values_at("shared_accepted", "shared_changed", "shared_rejected", "shared_submitted").all?
-        reviewed = counts["shared_accepted"] + counts["shared_changed"] + counts["shared_rejected"]
+      if counts["shared_submitted"]
+        reviewed = %w[shared_accepted shared_changed shared_rejected].sum { |field| counts.fetch(field, 0) }
         errors << "line #{line}: reviewed shared-card outcomes cannot exceed shared_submitted" if reviewed > counts["shared_submitted"]
       end
 
@@ -280,13 +508,27 @@ module ResearchEvidence
       end
 
 
-      if sample_counts["end_to_end_lookup_seconds_samples"] && counts["lookup_attempts"] &&
-         sample_counts["end_to_end_lookup_seconds_samples"] > counts["lookup_attempts"]
-        errors << "line #{line}: end-to-end timing samples cannot exceed lookup_attempts"
+      if sample_counts["end_to_end_lookup_seconds_samples"] && counts["lookup_attempts"]
+        sample_count = sample_counts["end_to_end_lookup_seconds_samples"]
+        if complete_pilot && sample_count != counts["lookup_attempts"]
+          errors << "line #{line}: complete-pilot lookup timings must contain one sample per lookup_attempt"
+        elsif sample_count > counts["lookup_attempts"]
+          errors << "line #{line}: end-to-end timing samples cannot exceed lookup_attempts"
+        end
       end
-      if sample_counts["capture_seconds_samples"] && counts["authored_cards"] &&
-         sample_counts["capture_seconds_samples"] > counts["authored_cards"]
-        errors << "line #{line}: capture timing samples cannot exceed authored_cards"
+      if sample_counts["capture_seconds_samples"] && counts["authored_cards"]
+        sample_count = sample_counts["capture_seconds_samples"]
+        if complete_pilot && sample_count != counts["authored_cards"]
+          errors << "line #{line}: complete-pilot capture timings must contain one sample per authored_card"
+        elsif sample_count > counts["authored_cards"]
+          errors << "line #{line}: capture timing samples cannot exceed authored_cards"
+        end
+      end
+      if complete_pilot && counts["lookup_attempts"].to_i.positive? && sample_counts["end_to_end_lookup_seconds_samples"].nil?
+        errors << "line #{line}: complete-pilot lookup timings are required when lookups occurred"
+      end
+      if complete_pilot && counts["authored_cards"].to_i.positive? && sample_counts["capture_seconds_samples"].nil?
+        errors << "line #{line}: complete-pilot capture timings are required when cards were authored"
       end
       if sample_counts["end_to_end_lookup_seconds_samples"]
         observed_under_ten = row["end_to_end_lookup_seconds_samples"].split(";").count { |sample| sample.to_f < 10 }
@@ -300,10 +542,20 @@ module ResearchEvidence
       unless row["search_p95_ms"].nil? || row["search_p95_ms"].empty? || (numeric?(row["search_p95_ms"]) && row["search_p95_ms"].to_f >= 0)
         errors << "line #{line}: search_p95_ms must be a non-negative number or blank"
       end
+      if complete_pilot && counts["lookup_attempts"].to_i.positive? && row["search_p95_ms"].to_s.empty?
+        errors << "line #{line}: search_p95_ms is required when lookups occurred"
+      end
 
       burden = row["maintenance_burden"].to_s
       unless burden.empty? || MAINTENANCE_VALUES.include?(burden)
         errors << "line #{line}: maintenance_burden must be blank or one of #{MAINTENANCE_VALUES.join(', ')}"
+      end
+      if week && week < 4
+        errors << "line #{line}: differentiation is collected only in week four" if counts.key?("differentiation_yes") || counts.key?("differentiation_responses")
+        errors << "line #{line}: maintenance_burden is collected only in week four" unless burden.empty?
+      elsif week == 4 && complete_pilot
+        errors << "line #{line}: differentiation_yes and differentiation_responses are required in week four" unless counts.key?("differentiation_yes") && counts.key?("differentiation_responses")
+        errors << "line #{line}: a final maintenance decision is required" unless %w[acceptable unacceptable].include?(burden)
       end
 
       if counts["pilot_users"]
@@ -311,13 +563,18 @@ module ResearchEvidence
         errors << "line #{line}: pilot_users changed within #{repository}" if previous && previous != counts["pilot_users"]
         pilot_users_by_repository[repository] = counts["pilot_users"]
       end
+      weekly_active_totals[repository] += counts["weekly_active_users"] if counts["weekly_active_users"]
+      active_users_by_repository[repository] << [week, counts["cumulative_unique_active_users"], line] if week && counts["cumulative_unique_active_users"]
       reusers_by_repository[repository] << [week, counts["cumulative_unique_active_reusers"], line] if week && counts["cumulative_unique_active_reusers"]
     end
 
-    reusers_by_repository.each_value do |observations|
-      observations.sort_by!(&:first)
-      observations.each_cons(2) do |previous, current|
-        errors << "line #{current[2]}: cumulative_unique_active_reusers cannot decrease" if current[1] < previous[1]
+    validate_monotonic(errors, active_users_by_repository, "cumulative_unique_active_users")
+    validate_monotonic(errors, reusers_by_repository, "cumulative_unique_active_reusers")
+
+    periods_by_repository.each_value do |periods|
+      periods.sort_by!(&:first)
+      periods.each_cons(2) do |previous, current|
+        errors << "line #{current[3]}: repository-week periods must be consecutive and non-overlapping" unless current[1] == previous[2] + 1
       end
     end
 
@@ -329,6 +586,7 @@ module ResearchEvidence
           selected << week if name == repository
         end.sort
         errors << "complete pilot: #{repository} must contain weeks 1, 2, 3, and 4" unless weeks == [1, 2, 3, 4]
+        errors << "complete pilot: #{repository} had no active pilot user in any week" unless weekly_active_totals[repository].positive?
       end
     end
 
@@ -345,31 +603,116 @@ module ResearchEvidence
     Float(value, exception: false) && value.to_s.match?(/\A(?:\d+(?:\.\d*)?|\.\d+)\z/)
   end
 
+  def iso_date(value)
+    return nil if value.to_s.empty?
+
+    Date.iso8601(value)
+  rescue ArgumentError
+    nil
+  end
+
+  def validate_monotonic(errors, observations_by_repository, field)
+    observations_by_repository.each_value do |observations|
+      observations.sort_by!(&:first)
+      observations.each_cons(2) do |previous, current|
+        errors << "line #{current[2]}: #{field} cannot decrease" if current[1] < previous[1]
+      end
+    end
+  end
+
   def validate_upper_bound(errors, line, counts, numerator, denominator)
     return unless counts[numerator] && counts[denominator]
     return if counts[numerator] <= counts[denominator]
 
     errors << "line #{line}: #{numerator} cannot exceed #{denominator}"
   end
+
+  def read_csv(path)
+    raise ArgumentError, "CSV exceeds #{MAX_INPUT_BYTES} bytes" if File.size(path) > MAX_INPUT_BYTES
+
+    table = CSV.read(path, headers: true, encoding: "UTF-8")
+    oversized = table.any? do |row|
+      row.fields.compact.any? { |field| field.bytesize > MAX_FIELD_BYTES }
+    end
+    raise ArgumentError, "CSV contains a field larger than #{MAX_FIELD_BYTES} bytes" if oversized
+
+    table
+  rescue Errno::ENOENT => e
+    raise ArgumentError, "missing CSV: #{e.message}"
+  rescue CSV::MalformedCSVError, EncodingError => e
+    raise ArgumentError, "invalid CSV: #{e.message}"
+  end
 end
 
 if $PROGRAM_NAME == __FILE__
   complete_pilot = ARGV.delete("--complete-pilot")
+  stage_2 = ARGV.delete("--stage-2")
+  reuse_option = ARGV.index("--active-user-reuse")
+  reuse_path = reuse_option ? ARGV.delete_at(reuse_option + 1) : nil
+  ARGV.delete_at(reuse_option) if reuse_option
+  card_reuse_option = ARGV.index("--eight-week-card-reuse")
+  card_reuse_path = card_reuse_option ? ARGV.delete_at(card_reuse_option + 1) : nil
+  ARGV.delete_at(card_reuse_option) if card_reuse_option
   path = ARGV.shift
-  abort "usage: ruby scripts/research_evidence.rb [--complete-pilot] STAGE_3_CSV" unless path && ARGV.empty?
+  usage = "usage: ruby scripts/research_evidence.rb [--stage-2 | --complete-pilot --active-user-reuse USER_CSV --eight-week-card-reuse CARD_CSV] CSV"
+  options_valid = (!reuse_option || reuse_path) && (!card_reuse_option || card_reuse_path)
+  abort usage unless path && ARGV.empty? && !(stage_2 && complete_pilot) && options_valid
+  abort usage if complete_pilot && (!reuse_path || !card_reuse_path)
 
-  registration = ResearchEvidence.load_registration
-  errors = ResearchEvidence.validate_registration(registration)
-  table = CSV.read(path, headers: true)
-  errors.concat(
-    ResearchEvidence.validate_stage3_table(
-      table,
-      exact_version: registration.dig("pilot", "version"),
-      complete_pilot: complete_pilot
-    )
-  )
+  begin
+    registration = ResearchEvidence.load_registration
+    errors = ResearchEvidence.validate_registration(registration)
+    table = ResearchEvidence.read_csv(path)
+    exact_version = registration.dig("pilot", "version")
+    if stage_2
+      errors.concat(ResearchEvidence.validate_stage2_table(table, exact_version: exact_version))
+      label = "Stage 2"
+    else
+      eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
+      errors.concat(
+        ResearchEvidence.validate_stage3_table(
+          table,
+          exact_version: exact_version,
+          eligible_on: eligible_on,
+          complete_pilot: complete_pilot
+        )
+      )
+      if reuse_path
+        reuse_table = ResearchEvidence.read_csv(reuse_path)
+        errors.concat(ResearchEvidence.validate_stage3_user_reuse_table(reuse_table, exact_version: exact_version))
+        unless reuse_table.any? { |row| row["active_during_weeks_1_4"] == "true" }
+          errors << "complete pilot: active-user reuse denominator must contain at least one active participant"
+        end
+      end
+      if card_reuse_path
+        card_reuse_table = ResearchEvidence.read_csv(card_reuse_path)
+        pilot_periods = table.each_with_object({}) do |row, periods|
+          repository = row["repository_alias"]
+          week = ResearchEvidence.integer(row["week"])
+          start_date = ResearchEvidence.iso_date(row["observation_start"])
+          end_date = ResearchEvidence.iso_date(row["observation_end"])
+          periods[repository] ||= {}
+          periods[repository][:start] = start_date if week == 1 && start_date
+          periods[repository][:core_end] = end_date if week == 4 && end_date
+        end
+        pilot_periods.each_value do |period|
+          period[:follow_up_end] = period[:start] + 55 if period[:start]
+        end
+        errors.concat(
+          ResearchEvidence.validate_stage3_card_reuse_table(
+            card_reuse_table,
+            exact_version: exact_version,
+            eligible_on: eligible_on,
+            pilot_periods: pilot_periods
+          )
+        )
+      end
+      label = "Stage 3"
+    end
 
-  abort errors.join("\n") unless errors.empty?
-
-  puts "Validated #{table.length} Stage 3 rows against exact build #{registration.dig('pilot', 'version')}"
+    abort errors.join("\n") unless errors.empty?
+    puts "Validated #{table.length} #{label} rows against exact build #{exact_version}"
+  rescue ArgumentError => e
+    abort e.message
+  end
 end

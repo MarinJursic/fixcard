@@ -3,6 +3,7 @@
 
 require "csv"
 require "pathname"
+require "tempfile"
 require "yaml"
 
 require_relative "research_evidence"
@@ -16,24 +17,34 @@ EXPECTED_HEADERS = {
     recurrent_failures repository_specific_failures previously_saved_failures
   ],
   "stage-2-observations.csv" => %w[
-    participant_alias card_alias maintainer_alias creation_seconds controlled_variants
+    participant_alias card_alias maintainer_alias fixcard_version creation_seconds controlled_variants
     correct_rank_one fixcard_lookup_seconds_samples normal_search_seconds_samples
     metadata_confusion_observed privacy_edits scanner_false_positives
     trust_preferred maintainer_decision
   ],
   "stage-3-repository-weeks.csv" => %w[
-    repository_alias week fixcard_version pilot_users weekly_active_users
+    repository_alias week observation_start observation_end fixcard_version
+    pilot_users weekly_active_users
     active_users_with_three_cards lookup_attempts strong_matches
     relevant_strong_matches correct_abstentions incorrect_abstentions
     search_p95_ms end_to_end_lookup_seconds_samples
     full_lookups_under_ten_seconds fixcard_used_first other_tool_used_first
-    authored_cards capture_seconds_samples cumulative_unique_active_reusers
+    authored_cards capture_seconds_samples cumulative_unique_active_users
+    cumulative_unique_active_reusers
     author_reuses teammate_reuses
     shared_submitted shared_accepted shared_changed shared_rejected retired_cards
     scanner_catches scanner_false_positives
     users_bypassing_scanner_due_false_positives missed_real_secrets
     serious_trust_incidents differentiation_yes differentiation_responses
     maintenance_burden
+  ],
+  "stage-3-active-user-reuse.csv" => %w[
+    participant_alias fixcard_version active_during_weeks_1_4
+    reused_or_teammate_reused_during_weeks_1_4
+  ],
+  "stage-3-eight-week-card-reuse.csv" => %w[
+    repository_alias card_alias fixcard_version authored_on follow_up_end
+    available_to_teammates reused_by_other_person_by_week_8
   ]
 }.freeze
 
@@ -89,6 +100,56 @@ begin
   registration = ResearchEvidence.load_registration
   errors.concat(ResearchEvidence.validate_registration(registration))
   exact_version = registration.dig("pilot", "version")
+  eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
+
+  stage_2 = tables["stage-2-observations.csv"]
+  if stage_2
+    errors << "Stage 2 schema differs between the template checker and evidence validator" unless EXPECTED_HEADERS.fetch("stage-2-observations.csv") == ResearchEvidence::STAGE_2_HEADERS
+    errors.concat(ResearchEvidence.validate_stage2_table(stage_2, exact_version: exact_version))
+    stage_2_headers = EXPECTED_HEADERS.fetch("stage-2-observations.csv")
+    stage_2_row = lambda do |version|
+      values = stage_2_headers.map do |header|
+        {"participant_alias" => "P001", "card_alias" => "C001", "fixcard_version" => version}.fetch(header, "")
+      end
+      CSV::Table.new([CSV::Row.new(stage_2_headers, values)])
+    end
+    exact_stage_2_errors = ResearchEvidence.validate_stage2_table(stage_2_row.call(exact_version), exact_version: exact_version)
+    errors << "Stage 2 exact-build control failed: #{exact_stage_2_errors.join('; ')}" unless exact_stage_2_errors.empty?
+    previous_version = registration.dig("amendment", "supersedes_version")
+    errors << "Stage 2 mixed-build mutation was accepted" if ResearchEvidence.validate_stage2_table(stage_2_row.call(previous_version), exact_version: exact_version).empty?
+    errors << "Stage 2 blank-build mutation was accepted" if ResearchEvidence.validate_stage2_table(stage_2_row.call(""), exact_version: exact_version).empty?
+  end
+
+  active_user_reuse = tables["stage-3-active-user-reuse.csv"]
+  if active_user_reuse
+    errors << "Stage 3 active-user schema differs between checker and validator" unless EXPECTED_HEADERS.fetch("stage-3-active-user-reuse.csv") == ResearchEvidence::STAGE_3_USER_REUSE_HEADERS
+    errors.concat(ResearchEvidence.validate_stage3_user_reuse_table(active_user_reuse, exact_version: exact_version))
+    reuse_headers = EXPECTED_HEADERS.fetch("stage-3-active-user-reuse.csv")
+    reuse_row = lambda do |version, active: "true", reused: "true", participant: "P001"|
+      CSV::Table.new([
+        CSV::Row.new(reuse_headers, [participant, version, active, reused])
+      ])
+    end
+    valid_reuse_errors = ResearchEvidence.validate_stage3_user_reuse_table(reuse_row.call(exact_version), exact_version: exact_version)
+    errors << "Stage 3 active-user control failed: #{valid_reuse_errors.join('; ')}" unless valid_reuse_errors.empty?
+    errors << "Stage 3 active-user mixed-build mutation was accepted" if ResearchEvidence.validate_stage3_user_reuse_table(reuse_row.call(registration.dig("amendment", "supersedes_version")), exact_version: exact_version).empty?
+    errors << "Stage 3 inactive-reuser mutation was accepted" if ResearchEvidence.validate_stage3_user_reuse_table(reuse_row.call(exact_version, active: "false", reused: "true"), exact_version: exact_version).empty?
+  end
+
+  card_reuse = tables["stage-3-eight-week-card-reuse.csv"]
+  if card_reuse
+    errors << "Stage 3 eight-week card schema differs between checker and validator" unless EXPECTED_HEADERS.fetch("stage-3-eight-week-card-reuse.csv") == ResearchEvidence::STAGE_3_CARD_REUSE_HEADERS
+    errors.concat(ResearchEvidence.validate_stage3_card_reuse_table(card_reuse, exact_version: exact_version, eligible_on: eligible_on))
+    card_headers = EXPECTED_HEADERS.fetch("stage-3-eight-week-card-reuse.csv")
+    card_row = lambda do |version, available: "true", reused: "true", authored: eligible_on.iso8601|
+      values = ["R001", "C001", version, authored, (eligible_on + 55).iso8601, available, reused]
+      CSV::Table.new([CSV::Row.new(card_headers, values)])
+    end
+    valid_card_errors = ResearchEvidence.validate_stage3_card_reuse_table(card_row.call(exact_version), exact_version: exact_version, eligible_on: eligible_on)
+    errors << "Stage 3 eight-week card control failed: #{valid_card_errors.join('; ')}" unless valid_card_errors.empty?
+    errors << "Stage 3 eight-week mixed-build mutation was accepted" if ResearchEvidence.validate_stage3_card_reuse_table(card_row.call(registration.dig("amendment", "supersedes_version")), exact_version: exact_version, eligible_on: eligible_on).empty?
+    errors << "Stage 3 unavailable-card reuse mutation was accepted" if ResearchEvidence.validate_stage3_card_reuse_table(card_row.call(exact_version, available: "false", reused: "true"), exact_version: exact_version, eligible_on: eligible_on).empty?
+  end
 
   stage_3 = tables["stage-3-repository-weeks.csv"]
   if stage_3
@@ -137,6 +198,23 @@ begin
       exact_version: exact_version
     )
     errors << "Stage 3 impossible-count mutation was accepted" if impossible_errors.empty?
+
+    partial_abstention_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(exact_version, "lookup_attempts" => "1", "correct_abstentions" => "2"),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 partial-abstention overcount mutation was accepted" if partial_abstention_errors.empty?
+
+    partial_shared_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "shared_submitted" => "5",
+        "shared_accepted" => "5",
+        "shared_changed" => "5"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 partial shared-outcome overcount mutation was accepted" if partial_shared_errors.empty?
 
     timing_errors = ResearchEvidence.validate_stage3_table(
       build_row.call(
@@ -192,10 +270,22 @@ begin
 
     complete_rows = (1..5).flat_map do |repository_number|
       (1..4).map do |week|
+        start_date = eligible_on + ((week - 1) * 7)
+        required_counts = ResearchEvidence::COUNT_FIELDS.to_h { |field| [field, "0"] }
+        required_counts.delete("differentiation_yes") unless week == 4
+        required_counts.delete("differentiation_responses") unless week == 4
         build_row.call(
           exact_version,
-          "repository_alias" => format("R%03d", repository_number),
-          "week" => week.to_s
+          required_counts.merge(
+            "repository_alias" => format("R%03d", repository_number),
+            "week" => week.to_s,
+            "observation_start" => start_date.iso8601,
+            "observation_end" => (start_date + 6).iso8601,
+            "pilot_users" => "1",
+            "weekly_active_users" => week == 1 ? "1" : "0",
+            "cumulative_unique_active_users" => "1",
+            "maintenance_burden" => week == 4 ? "acceptable" : ""
+          )
         ).first
       end
     end
@@ -203,6 +293,7 @@ begin
     complete_errors = ResearchEvidence.validate_stage3_table(
       complete_table,
       exact_version: exact_version,
+      eligible_on: eligible_on,
       complete_pilot: true
     )
     errors << "Stage 3 complete-pilot control failed: #{complete_errors.join('; ')}" unless complete_errors.empty?
@@ -210,6 +301,7 @@ begin
     incomplete_errors = ResearchEvidence.validate_stage3_table(
       CSV::Table.new(complete_rows[0...-1]),
       exact_version: exact_version,
+      eligible_on: eligible_on,
       complete_pilot: true
     )
     errors << "Stage 3 incomplete-week mutation was accepted" if incomplete_errors.empty?
@@ -217,9 +309,49 @@ begin
     too_few_errors = ResearchEvidence.validate_stage3_table(
       CSV::Table.new(complete_rows.select { |row| row["repository_alias"] != "R005" }),
       exact_version: exact_version,
+      eligible_on: eligible_on,
       complete_pilot: true
     )
     errors << "Stage 3 four-repository mutation was accepted" if too_few_errors.empty?
+
+    blank_complete_rows = complete_rows.map(&:dup)
+    blank_complete_rows.each do |row|
+      ResearchEvidence::COUNT_FIELDS.each { |field| row[field] = "" }
+    end
+    blank_complete_errors = ResearchEvidence.validate_stage3_table(
+      CSV::Table.new(blank_complete_rows),
+      exact_version: exact_version,
+      eligible_on: eligible_on,
+      complete_pilot: true
+    )
+    errors << "Stage 3 observation-free complete-pilot mutation was accepted" if blank_complete_errors.empty?
+
+    selective_timing_rows = complete_rows.map(&:dup)
+    selective_timing_rows.first["lookup_attempts"] = "100"
+    selective_timing_rows.first["strong_matches"] = "100"
+    selective_timing_rows.first["relevant_strong_matches"] = "100"
+    selective_timing_rows.first["fixcard_used_first"] = "100"
+    selective_timing_rows.first["end_to_end_lookup_seconds_samples"] = "1"
+    selective_timing_rows.first["full_lookups_under_ten_seconds"] = "1"
+    selective_timing_rows.first["search_p95_ms"] = "1"
+    selective_timing_errors = ResearchEvidence.validate_stage3_table(
+      CSV::Table.new(selective_timing_rows),
+      exact_version: exact_version,
+      eligible_on: eligible_on,
+      complete_pilot: true
+    )
+    errors << "Stage 3 selective timing mutation was accepted" if selective_timing_errors.empty?
+
+    early_rows = complete_rows.map(&:dup)
+    early_rows.first["observation_start"] = (eligible_on - 7).iso8601
+    early_rows.first["observation_end"] = (eligible_on - 1).iso8601
+    early_errors = ResearchEvidence.validate_stage3_table(
+      CSV::Table.new(early_rows),
+      exact_version: exact_version,
+      eligible_on: eligible_on,
+      complete_pilot: true
+    )
+    errors << "Stage 3 pre-registration date mutation was accepted" if early_errors.empty?
   end
 
   dogfood = File.read(ROOT.join("docs", "dogfood.md"), encoding: "UTF-8")
@@ -236,10 +368,35 @@ begin
     errors << "validation-report.yml: exact_pilot_build must offer only #{exact_version}"
   end
 
-  confirmations = form.fetch("body").find { |element| element["id"] == "build_confirmation" }
+  confirmations = form.fetch("body").find { |element| element["id"] == "protocol_confirmation" }
   confirmation_labels = confirmations&.dig("attributes", "options")&.map { |option| option["label"] } || []
   errors << "validation-report.yml: must confirm fixcard --version" unless confirmation_labels.any? { |label| label.include?("fixcard --version") && label.include?(exact_version) }
   errors << "validation-report.yml: must confirm fix --version" unless confirmation_labels.any? { |label| label.include?("fix --version") && label.include?(exact_version) }
+  privacy = form.fetch("body").find { |element| element["id"] == "privacy" }
+  privacy_labels = privacy&.dig("attributes", "options")&.map { |option| option["label"] } || []
+  errors << "validation-report.yml: must require public small-cell suppression" unless privacy_labels.any? { |label| label.include?("smaller than five") }
+
+  Tempfile.create(["malformed-stage-3", ".csv"]) do |file|
+    file.write("repository_alias,week\n\"unterminated")
+    file.flush
+    begin
+      ResearchEvidence.read_csv(file.path)
+      errors << "malformed CSV mutation was accepted"
+    rescue ArgumentError
+      nil
+    end
+  end
+
+  Tempfile.create(["non-object-registration", ".json"]) do |file|
+    file.write("[]")
+    file.flush
+    begin
+      ResearchEvidence.load_registration(file.path)
+      errors << "non-object registration mutation was accepted"
+    rescue ArgumentError
+      nil
+    end
+  end
 rescue ArgumentError, KeyError, Psych::Exception => e
   errors << "research registration controls: #{e.message}"
 end

@@ -8,10 +8,19 @@
       "docs/research-study.md",
       "docs/research-operations.md",
       "docs/validation.md",
-      "docs/dogfood.md"
+      "docs/dogfood.md",
+      "research/templates/stage-1-participants.csv",
+      "research/templates/stage-2-observations.csv",
+      "research/templates/stage-3-repository-weeks.csv",
+      "research/templates/stage-3-active-user-reuse.csv",
+      "research/templates/stage-3-eight-week-card-reuse.csv",
+      "research/templates/aggregate-report.md",
+      ".github/ISSUE_TEMPLATE/validation-report.yml",
+      "scripts/research_evidence.rb",
+      "scripts/check_research_kit.rb"
     ],
     "raw_data_location": "access_controlled_outside_public_repository",
-    "public_data_policy": "sanitized_aggregates_only"
+    "public_data_policy": "sanitized_cross_repository_aggregates_with_small_cell_suppression"
   },
   "amendment": {
     "supersedes_version": "1.0.0-rc.5",
@@ -30,8 +39,9 @@
     "version": "1.0.0-rc.6",
     "tag": "v1.0.0-rc.6",
     "commit": "6a10e0556576a80e481a2ca362544f81bd05977f",
-    "eligible_observations_on_or_after": "2026-08-06",
+    "eligible_observations_on_or_after": "2026-08-10",
     "working_weeks": 4,
+    "stable_decision_after_weeks": 8,
     "repositories": {
       "minimum": 5,
       "maximum": 8
@@ -46,6 +56,8 @@
     "asset_count": 8,
     "sbom_asset": "fixcard.cdx.json",
     "checksum_asset": "SHA256SUMS",
+    "homebrew_formula_commit": "4540692a35180a8efa353c2cd8cadc46fc019750",
+    "homebrew_formula_url": "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/4540692a35180a8efa353c2cd8cadc46fc019750/Formula/fixcard.rb",
     "archive_sha256": {
       "fixcard-1.0.0-rc.6-aarch64-apple-darwin.tar.gz": "faec6a30e09b03bed3912085f0279a5162f7c72e2f2fdc3984ee59f402506133",
       "fixcard-1.0.0-rc.6-aarch64-unknown-linux-gnu.tar.gz": "946f2edb791858a43029460f5b98cb8c414558bb01e47258e296537407a673a7",
@@ -91,11 +103,12 @@
       "correct_rank_one_share_minimum": 0.7,
       "trust_preference_share_minimum": 0.6,
       "distinct_maintainers_accepting_committed_cards_minimum": 5,
+      "exact_registered_build_required": true,
       "precision_denominator": "all_observed_controlled_variants",
       "trust_denominator": "participants_answering_once"
     },
     "stage_3": {
-      "strong_rank_one_relevance_share_minimum": 0.75,
+      "strong_rank_one_relevance_share_minimum": 0.8,
       "strong_rank_one_relevance_target": 0.85,
       "search_p95_ms_maximum": 100,
       "full_lookup_under_ten_seconds_share_minimum_exclusive": 0.5,
@@ -103,6 +116,7 @@
       "median_capture_seconds_maximum": 20,
       "active_users_with_three_cards_share_minimum": 0.5,
       "active_user_reuse_share_minimum": 0.3,
+      "active_user_reuse_denominator": "globally_deduplicated_active_pilot_users_through_week_four",
       "shared_cards_accepted_minimum": 5,
       "repositories_with_accepted_shared_cards_minimum": 2,
       "serious_trust_incidents_maximum": 0,
@@ -110,7 +124,8 @@
       "users_bypassing_scanner_due_false_positives_maximum": 0,
       "differentiation_share_requirement": "strict_majority",
       "maintenance_acceptable_share_minimum_exclusive": 0.5,
-      "maintenance_denominator": "final_week_repository_responses"
+      "maintenance_denominator": "final_week_repository_responses",
+      "every_triggered_kill_criterion_overrides_passing_metric_gates": true
     },
     "stable_promotion": "milestone_0_and_every_stage_and_every_kill_criterion_reviewed"
   },

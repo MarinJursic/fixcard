@@ -12,7 +12,7 @@ The machine-readable
 [`pilot-registration.json`](../research/pilot-registration.json) is a pre-data
 amendment that freezes `1.0.0-rc.6`, commit
 `6a10e0556576a80e481a2ca362544f81bd05977f`, six archive digests, an eligible
-start date of 2026-08-06, all fixed gates, and all ten kill criteria. It records
+start date of 2026-08-10, all fixed gates, and all ten kill criteria. It records
 zero eligible evidence at registration and carries nothing forward from RC5.
 
 ## Evidence ledger
@@ -68,19 +68,22 @@ on x86_64/ARM Linux and Intel/Apple Silicon macOS. A clean installation from
 the public tap was then repeated on Apple Silicon. These results prove the
 implementation and distribution baseline; they do not prove product behavior.
 
-The research-kit checker accepts an exact RC6 Stage 3 row and deliberately
-mutates the same row to prove that RC5 and blank versions are rejected. The
-standalone validator also rejects malformed counts, mixed builds, duplicate
-repository-weeks, decreasing cumulative reuse, incomplete four-week coverage,
-excess timing samples, scanner-bypass counts above pilot users, and repository
+The research-kit checker accepts exact RC6 Stage 2 and Stage 3 rows and
+deliberately mutates them to prove that RC5 and blank versions are rejected.
+The standalone validator also rejects malformed input, observations before the
+eligible date, missing complete-pilot fields, selective timing samples,
+impossible partial totals, duplicate repository-weeks, decreasing cumulative
+active-user or reuse counts, incomplete four-week coverage, and repository
 counts outside 5–8. These controls prevent evidence mixing; they do not turn
-empty, missing, or adverse observations into a pass.
+adverse observations into a pass.
 
 ## Reporting
 
 Follow the [research operations guide](research-operations.md), the
 [pre-pilot protocol](research-study.md), and the
 [four-week dogfood protocol](dogfood.md). Submit Stage 3 results through the
-[sanitized validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+[sanitized cross-repository validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+Repository-week and participant-level records remain access-controlled; only
+small-cell-suppressed aggregate results may be submitted publicly.
 The umbrella tracker is
 [issue #5](https://github.com/MarinJursic/fixcard/issues/5).

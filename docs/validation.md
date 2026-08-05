@@ -100,11 +100,12 @@ aggregated, anonymized results and methodology.
 ## Go/change/stop thresholds
 
 Promote the exact tested release candidate to stable 1.0 only if every stage
-passes and the four-week pilot meets all core thresholds:
+passes, the four-week pilot meets all core thresholds, and the additional
+four-week follow-up permits all ten kill criteria to be classified:
 
 | Metric | Required signal |
 | --- | --- |
-| Match precision | At least 75% of strong rank-one matches judged relevant; target 85% before broad promotion |
+| Match precision | At least 80% of strong rank-one matches judged relevant; target 85% before broad promotion; any kill criterion overrides this gate |
 | Lookup latency | Search below 100 ms and a strict majority of observed full human lookup flows below 10 seconds |
 | Creation friction | Median at or below 20 seconds after the resolution is known |
 | Capture behavior | At least 50% of weekly active pilot users create three or more cards |

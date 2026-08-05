@@ -18,8 +18,14 @@ recruiting participants or collecting observations.
   aggregate row per real card evaluated in the concierge study.
 - [`stage-3-repository-weeks.csv`](templates/stage-3-repository-weeks.csv)
   records one aggregate row per anonymous repository and pilot week.
+- [`stage-3-active-user-reuse.csv`](templates/stage-3-active-user-reuse.csv)
+  globally deduplicates the active-user reuse denominator without publishing
+  identities.
+- [`stage-3-eight-week-card-reuse.csv`](templates/stage-3-eight-week-card-reuse.csv)
+  freezes the card-level denominator for kill criterion 5.
 - [`aggregate-report.md`](templates/aggregate-report.md) is the public report
   outline and decision record.
 
-Run `ruby scripts/check_research_kit.rb` to verify that the distributed
-templates retain their expected privacy-minimizing schemas.
+Run `ruby scripts/check_research_kit.rb` from a full Git clone with Ruby 3.1 or
+newer to verify that the distributed templates retain their expected
+privacy-minimizing schemas and match the frozen protocol commit.

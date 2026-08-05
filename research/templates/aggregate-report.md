@@ -58,7 +58,8 @@
 - Fixcard-first versus other-tool-first incidents:
 - Median observed capture seconds and sample size:
 - Weekly active users creating three or more cards / weekly active users:
-- Unique active reusers / active pilot users:
+- Globally deduplicated active reusers / globally deduplicated active pilot users:
+- Week-eight cards reused by another person / cards available to teammates:
 - Shared cards submitted, accepted, changed, rejected, and retired:
 - Scanner catches, false positives, users bypassing scanning, and missed real secrets:
 - Serious trust or unsafe-certainty incidents:

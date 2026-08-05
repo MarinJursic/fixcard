@@ -102,7 +102,8 @@ paths, line numbers, or versions without changing the cause.
 
 Record one row per real card in `stage-2-observations.csv`. Use a stable
 non-identifying `maintainer_alias` such as `M001` for the reviewer; leave it
-blank only when the card was not reviewed. The
+blank only when the card was not reviewed. Record `fixcard_version` on every
+row; blank, mixed, and superseded builds are ineligible. The
 `correct_rank_one` value is a count no greater than `controlled_variants`.
 Semicolon-separated timing samples compare Fixcard with the participant's
 normal search route. Record whether metadata caused confusion, plus only counts
@@ -125,11 +126,32 @@ working weeks. Follow the [dogfood protocol](dogfood.md). Enter one aggregate
 row per anonymous repository and week in `stage-3-repository-weeks.csv`.
 
 Timing sample fields contain semicolon-separated observed numeric durations,
-not estimates. `full_lookups_under_ten_seconds`, `fixcard_used_first`, and
-`other_tool_used_first` are counts no greater than `lookup_attempts`.
+not estimates. Complete evidence contains exactly one end-to-end timing per
+lookup and one capture timing per authored card; there is no discretionary
+subsampling. `full_lookups_under_ten_seconds`, `fixcard_used_first`, and
+`other_tool_used_first` are counts derived from those same lookups.
 `correct_abstentions` and `incorrect_abstentions` describe lookups without a
-strong result. `cumulative_unique_active_reusers` is the deduplicated number
-through that week; use the week-four value and never sum it across weeks.
+strong result. `observation_start` and `observation_end` define a seven-day
+reporting period; four periods per repository must be consecutive,
+non-overlapping, and no earlier than the registered eligibility date.
+`cumulative_unique_active_users` and `cumulative_unique_active_reusers` are
+deduplicated repository-level counts through that week; use week-four values
+and never sum cumulative values across weeks.
+
+The 30% reuse denominator is deduplicated across repositories in the separate
+access-controlled `stage-3-active-user-reuse.csv`. Use one global participant
+alias across all participating repositories and keep the identity key separate
+from study data. Count every unique participant active at least once in weeks
+1–4 in the denominator and every such participant who reused a card or had a
+teammate reuse one in the numerator.
+
+The eight-week kill-criterion denominator is represented separately in
+`stage-3-eight-week-card-reuse.csv`: one anonymous row for every card authored
+during weeks 1–4, whether it became available to teammates, and whether another
+person reused it by the end of that repository's week-eight follow-up. The
+fixed rate is unique available cards reused by another person divided by all
+cards available to teammates; do not count reuse events or exclude unused
+eligible cards.
 Record differentiation responses and maintenance burden in the final week
 unless the protocol preregisters more frequent collection. A serious trust
 incident, unsafe-certainty incident, or missed real secret is reported
@@ -146,13 +168,19 @@ period must restart.
 Before aggregation, validate the access-controlled Stage 3 CSV with:
 
 ```sh
-ruby scripts/research_evidence.rb --complete-pilot /path/to/stage-3.csv
+ruby scripts/research_evidence.rb --complete-pilot \
+  --active-user-reuse /private/stage-3-active-user-reuse.csv \
+  --eight-week-card-reuse /private/stage-3-eight-week-card-reuse.csv \
+  /private/stage-3-repository-weeks.csv
 ```
 
-The command is intentionally fail-closed for blank or nonregistered versions,
-duplicate repository-weeks, impossible count relationships, incomplete weeks,
-and repository coverage outside 5–8. Do not edit the validator or registration
-after seeing results to make a report pass.
+The command requires Ruby 3.1 or newer and a full Git clone containing the
+registered protocol commit and exact release tag. It is intentionally
+fail-closed for blank or nonregistered versions, periods before eligibility,
+selectively missing timings, missing gate fields, duplicate repository-weeks,
+impossible count relationships, incomplete weeks, and repository coverage
+outside 5–8. Do not edit the validator or registration after seeing results to
+make a report pass.
 
 In the CSV, encode maintenance burden as `acceptable`, `unacceptable`, or
 `too_early_to_judge`. Semicolon-delimited timing samples must be the observed
@@ -171,7 +199,7 @@ Calculate and publish:
 | Stage 3 relevance | Relevant strong rank-one matches | All displayed strong rank-one matches |
 | Stage 3 full-flow speed | Observed end-to-end lookups below 10 seconds | All observed end-to-end lookup timings |
 | Stage 3 capture behavior | Weekly active users creating at least three cards | Weekly active users for the same repository-weeks |
-| Stage 3 reuse | Unique active users who reused a card or had a teammate reuse one | Unique active pilot users over four weeks |
+| Stage 3 reuse | Globally deduplicated active pilot users who reused a card or had a teammate reuse one | Globally deduplicated pilot users active at least once in weeks 1–4 |
 | Differentiation | Pilot users who distinguish Fixcard from alternatives | Pilot users answering the differentiation question |
 | Maintenance | Repositories reporting acceptable burden in week four | Repositories answering the week-four maintenance question |
 
@@ -200,6 +228,14 @@ focused iteration:
 Do not reinterpret a triggered criterion as success. Record a `change` or
 `stop` decision and the focused iteration, if any, before collecting more data.
 
+Criterion 5 cannot be classified at week four. Continue access-controlled
+follow-up for another four weeks and report the fraction of cards available to
+teammates that were reused by another person by the end of week eight. Stable
+promotion waits for that classification. Any triggered kill criterion
+overrides otherwise passing metric gates; in particular, strong-match
+relevance must be at least 80% so the relevance gate cannot pass while the
+greater-than-20% false-positive stop condition is triggered.
+
 ## 9. Publish an auditable aggregate report
 
 Use [`aggregate-report.md`](../research/templates/aggregate-report.md). Publish
@@ -212,6 +248,8 @@ release candidate with missing participant evidence remains a prerelease.
 
 Submit the Stage 1 and 2 aggregate report as a pull request that updates
 [Validation results](validation-results.md) and links its public methodology.
-Submit Stage 3 repository-week aggregates through the
+Keep Stage 3 repository-week and participant-level aggregates access-controlled.
+After week eight, submit only one sanitized cross-repository summary through the
 [validation report form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml),
-then use the same protected pull-request path for the final decision.
+suppressing every cell smaller than five, then use the protected pull-request
+path for the final decision.
