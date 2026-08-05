@@ -7,6 +7,14 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+## [1.0.0-rc.6] - 2026-08-05
+
+### Matching correctness
+
+- Recompose Unicode after lowercasing so normalization remains idempotent when
+  case conversion introduces combining sequences. Preserve the hosted
+  property-test counterexample as a permanent regression seed.
+
 ## [1.0.0-rc.5] - 2026-08-04
 
 ### Interactive lookup changes
@@ -140,7 +148,8 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.5...HEAD
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.6...HEAD
+[1.0.0-rc.6]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...v1.0.0-rc.4
 [1.0.0-rc.3]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.2...v1.0.0-rc.3
