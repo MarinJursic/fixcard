@@ -145,7 +145,9 @@ module ResearchEvidence
     errors << "registration: exact pilot version is missing" unless expected_version.to_s.match?(/\A1\.0\.0-rc\.\d+\z/)
     errors << "registration: tag must equal v + version" unless expected_tag == "v#{expected_version}"
     errors << "registration: commit must be a full SHA-1" unless expected_commit.to_s.match?(/\A[0-9a-f]{40}\z/)
-    errors << "registration: protocol commit must be a full SHA-1" unless registration.dig("protocol", "commit").to_s.match?(/\A[0-9a-f]{40}\z/)
+    protocol_commit = registration.dig("protocol", "commit").to_s
+    errors << "registration: protocol commit must be a full SHA-1" unless protocol_commit.match?(/\A[0-9a-f]{40}\z/)
+    errors << "registration: protocol commit must differ from the product build commit" if protocol_commit == expected_commit
     errors << "registration: evidence must not carry forward" unless registration.dig("amendment", "carry_forward_eligible_evidence") == false
 
     counts = registration.dig("amendment", "eligible_evidence_at_registration")
