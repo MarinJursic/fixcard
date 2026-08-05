@@ -157,7 +157,7 @@ or newer:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.5 --locked fixcard
+  --tag v1.0.0-rc.6 --locked fixcard
 ```
 
 ## Commands
