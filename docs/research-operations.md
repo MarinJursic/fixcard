@@ -140,6 +140,11 @@ duplicate repository-weeks, impossible count relationships, incomplete weeks,
 and repository coverage outside 5–8. Do not edit the validator or registration
 after seeing results to make a report pass.
 
+In the CSV, encode maintenance burden as `acceptable`, `unacceptable`, or
+`too_early_to_judge`. Semicolon-delimited timing samples must be the observed
+non-negative values; their counts cannot exceed the corresponding lookup or
+authored-card counts.
+
 ## 7. Use fixed denominators
 
 Calculate and publish:

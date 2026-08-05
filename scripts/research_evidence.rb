@@ -219,6 +219,8 @@ module ResearchEvidence
         end
       end
 
+      errors << "line #{line}: pilot_users must be at least 1 when reported" if counts["pilot_users"] == 0
+
       validate_upper_bound(errors, line, counts, "weekly_active_users", "pilot_users")
       validate_upper_bound(errors, line, counts, "active_users_with_three_cards", "weekly_active_users")
       validate_upper_bound(errors, line, counts, "strong_matches", "lookup_attempts")
@@ -248,12 +250,28 @@ module ResearchEvidence
         errors << "line #{line}: reviewed shared-card outcomes cannot exceed shared_submitted" if reviewed > counts["shared_submitted"]
       end
 
+      sample_counts = {}
       TIMING_FIELDS.each do |field|
         next if row[field].nil? || row[field].empty?
 
         samples = row[field].split(";", -1)
         valid = samples.all? { |sample| numeric?(sample) && sample.to_f >= 0 }
         errors << "line #{line}: #{field} must be semicolon-separated non-negative numbers" unless valid
+        sample_counts[field] = samples.length if valid
+      end
+
+
+      if sample_counts["end_to_end_lookup_seconds_samples"] && counts["lookup_attempts"] &&
+         sample_counts["end_to_end_lookup_seconds_samples"] > counts["lookup_attempts"]
+        errors << "line #{line}: end-to-end timing samples cannot exceed lookup_attempts"
+      end
+      if sample_counts["capture_seconds_samples"] && counts["authored_cards"] &&
+         sample_counts["capture_seconds_samples"] > counts["authored_cards"]
+        errors << "line #{line}: capture timing samples cannot exceed authored_cards"
+      end
+      if counts["full_lookups_under_ten_seconds"] && sample_counts["end_to_end_lookup_seconds_samples"] &&
+         counts["full_lookups_under_ten_seconds"] > sample_counts["end_to_end_lookup_seconds_samples"]
+        errors << "line #{line}: under-ten-second count cannot exceed observed end-to-end timing samples"
       end
 
       unless row["search_p95_ms"].nil? || row["search_p95_ms"].empty? || (numeric?(row["search_p95_ms"]) && row["search_p95_ms"].to_f >= 0)

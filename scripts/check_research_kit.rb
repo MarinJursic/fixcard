@@ -137,6 +137,16 @@ begin
     )
     errors << "Stage 3 impossible-count mutation was accepted" if impossible_errors.empty?
 
+    timing_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "lookup_attempts" => "1",
+        "end_to_end_lookup_seconds_samples" => "1.2;2.3"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 excess-timing-samples mutation was accepted" if timing_errors.empty?
+
     complete_rows = (1..5).flat_map do |repository_number|
       (1..4).map do |week|
         build_row.call(
