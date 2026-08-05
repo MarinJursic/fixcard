@@ -20,7 +20,8 @@ module ResearchEvidence
     authored_cards capture_seconds_samples cumulative_unique_active_reusers
     author_reuses teammate_reuses shared_submitted shared_accepted
     shared_changed shared_rejected retired_cards scanner_catches
-    scanner_false_positives missed_real_secrets serious_trust_incidents
+    scanner_false_positives users_bypassing_scanner_due_false_positives
+    missed_real_secrets serious_trust_incidents
     differentiation_yes differentiation_responses maintenance_burden
   ].freeze
 
@@ -46,28 +47,42 @@ module ResearchEvidence
       "recruited_participants_maximum" => 30,
       "working_weeks" => 2,
       "reusable_failure_participant_share_minimum" => 0.3333333333,
-      "denominator" => "all_recruited_participants"
+      "denominator" => "all_recruited_participants",
+      "coverage" => {
+        "product_backend_context_aliases_minimum" => 5,
+        "platform_infrastructure_context_aliases_minimum" => 3,
+        "data_ml_context_aliases_minimum" => 3,
+        "open_source_participants_minimum" => 3,
+        "required_role_bands" => %w[junior mid senior staff],
+        "required_platforms" => %w[macos linux windows]
+      }
     },
     "stage_2" => {
       "real_cards_per_participant" => 3,
       "median_creation_seconds_maximum" => 30,
       "correct_rank_one_share_minimum" => 0.7,
       "trust_preference_share_minimum" => 0.6,
-      "maintainer_accepted_cards_minimum" => 5
+      "distinct_maintainers_accepting_committed_cards_minimum" => 5,
+      "precision_denominator" => "all_observed_controlled_variants",
+      "trust_denominator" => "participants_answering_once"
     },
     "stage_3" => {
       "strong_rank_one_relevance_share_minimum" => 0.75,
       "strong_rank_one_relevance_target" => 0.85,
       "search_p95_ms_maximum" => 100,
-      "full_lookup_under_ten_seconds_requirement" => "usually",
+      "full_lookup_under_ten_seconds_share_minimum_exclusive" => 0.5,
+      "full_lookup_denominator" => "observed_end_to_end_lookup_timings",
       "median_capture_seconds_maximum" => 20,
       "active_users_with_three_cards_share_minimum" => 0.5,
       "active_user_reuse_share_minimum" => 0.3,
       "shared_cards_accepted_minimum" => 5,
+      "repositories_with_accepted_shared_cards_minimum" => 2,
       "serious_trust_incidents_maximum" => 0,
       "missed_real_secrets_maximum" => 0,
+      "users_bypassing_scanner_due_false_positives_maximum" => 0,
       "differentiation_share_requirement" => "strict_majority",
-      "maintenance_burden_requirement" => "acceptable"
+      "maintenance_acceptable_share_minimum_exclusive" => 0.5,
+      "maintenance_denominator" => "final_week_repository_responses"
     },
     "stable_promotion" => "milestone_0_and_every_stage_and_every_kill_criterion_reviewed"
   }.freeze
@@ -93,7 +108,8 @@ module ResearchEvidence
     author_reuses teammate_reuses shared_submitted shared_accepted
     shared_changed shared_rejected retired_cards scanner_catches
     scanner_false_positives missed_real_secrets serious_trust_incidents
-    differentiation_yes differentiation_responses
+    users_bypassing_scanner_due_false_positives differentiation_yes
+    differentiation_responses
   ].freeze
 
   TIMING_FIELDS = %w[
@@ -234,6 +250,7 @@ module ResearchEvidence
       end
       validate_upper_bound(errors, line, counts, "differentiation_yes", "differentiation_responses")
       validate_upper_bound(errors, line, counts, "differentiation_responses", "pilot_users")
+      validate_upper_bound(errors, line, counts, "users_bypassing_scanner_due_false_positives", "pilot_users")
 
       if counts.values_at("strong_matches", "correct_abstentions", "incorrect_abstentions", "lookup_attempts").all?
         classified = counts["strong_matches"] + counts["correct_abstentions"] + counts["incorrect_abstentions"]

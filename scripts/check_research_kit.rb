@@ -16,7 +16,7 @@ EXPECTED_HEADERS = {
     recurrent_failures repository_specific_failures previously_saved_failures
   ],
   "stage-2-observations.csv" => %w[
-    participant_alias card_alias creation_seconds controlled_variants
+    participant_alias card_alias maintainer_alias creation_seconds controlled_variants
     correct_rank_one fixcard_lookup_seconds_samples normal_search_seconds_samples
     metadata_confusion_observed privacy_edits scanner_false_positives
     trust_preferred maintainer_decision
@@ -30,7 +30,8 @@ EXPECTED_HEADERS = {
     authored_cards capture_seconds_samples cumulative_unique_active_reusers
     author_reuses teammate_reuses
     shared_submitted shared_accepted shared_changed shared_rejected retired_cards
-    scanner_catches scanner_false_positives missed_real_secrets
+    scanner_catches scanner_false_positives
+    users_bypassing_scanner_due_false_positives missed_real_secrets
     serious_trust_incidents differentiation_yes differentiation_responses
     maintenance_burden
   ]
@@ -146,6 +147,16 @@ begin
       exact_version: exact_version
     )
     errors << "Stage 3 excess-timing-samples mutation was accepted" if timing_errors.empty?
+
+    scanner_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "pilot_users" => "1",
+        "users_bypassing_scanner_due_false_positives" => "2"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 scanner-bypass denominator mutation was accepted" if scanner_errors.empty?
 
     complete_rows = (1..5).flat_map do |repository_number|
       (1..4).map do |week|

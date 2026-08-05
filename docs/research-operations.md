@@ -55,8 +55,8 @@ row per recruited participant into `stage-1-participants.csv`:
 
 - `recruitment_context`: `product_backend`, `platform_infrastructure`,
   `data_ml`, or `open_source`;
-- `role_band`: the preregistered broad band, never a uniquely identifying job
-  title;
+- `role_band`: `junior`, `mid`, `senior`, or `staff`, never a uniquely
+  identifying job title;
 - `platform`: `macos`, `linux`, `windows`, or preregistered `mixed`;
 - `qualifying_failures`: failures observed above the five-minute threshold;
 - `reusable_failures`: qualifying resolutions judged plausibly useful later;
@@ -68,6 +68,12 @@ The Stage 1 denominator is everyone recruited, not only completers. Report
 attrition separately. Stage 1 passes only when at least one third of recruited
 participants record two or more plausible reusable failures and the required
 coverage was actually recruited.
+
+For coverage, count distinct `context_alias` values and require at least five
+`product_backend`, three `platform_infrastructure`, and three `data_ml`
+contexts, plus at least three `open_source` participants. Recruit at least one
+participant in every role band and at least one macOS, Linux, and Windows user;
+`mixed` does not substitute for a missing named platform.
 
 ## 4. Create the Milestone 0 evidence corpus
 
@@ -94,19 +100,23 @@ three cards from real prior failures. Time creation after the resolution is
 already known. Prepare controlled recurrence variants by changing incidental
 paths, line numbers, or versions without changing the cause.
 
-Record one row per real card in `stage-2-observations.csv`. The
+Record one row per real card in `stage-2-observations.csv`. Use a stable
+non-identifying `maintainer_alias` such as `M001` for the reviewer; leave it
+blank only when the card was not reviewed. The
 `correct_rank_one` value is a count no greater than `controlled_variants`.
 Semicolon-separated timing samples compare Fixcard with the participant's
 normal search route. Record whether metadata caused confusion, plus only counts
 of privacy edits and scanner false positives—never the removed text.
-Record one consistent `trust_preferred` response per participant and use
+Use `fixcard`, `normal_search`, or `no_preference` for one consistent
+`trust_preferred` response per participant; leave it blank when unanswered. Use
 `accepted`, `changes_requested`, `rejected`, or `not_reviewed` for
 `maintainer_decision`.
 
 Report the median across observed card-creation durations, rank-one precision
 as correct variants divided by all controlled variants, comparative trust once
-per responding participant, and accepted cards only after normal maintainer
-review. Missing timings or responses stay missing.
+per responding participant, and the number of distinct maintainers with at
+least one accepted committed card after normal review. Stage 2 needs at least
+five such maintainers. Missing timings or responses stay missing.
 
 ## 6. Run Stage 3 on one exact build
 
@@ -124,6 +134,10 @@ Record differentiation responses and maintenance burden in the final week
 unless the protocol preregisters more frequent collection. A serious trust
 incident, unsafe-certainty incident, or missed real secret is reported
 immediately and cannot be averaged away by more activity.
+
+`users_bypassing_scanner_due_false_positives` is a deduplicated weekly user
+count. Any nonzero count fails the privacy gate; a frustrating false positive
+must not be hidden merely because it did not expose a secret.
 
 Do not switch builds mid-pilot. If a security fix requires a new build, stop,
 document the interruption, and preregister whether the affected observation
@@ -155,9 +169,11 @@ Calculate and publish:
 | Stage 2 precision | Correct rank-one controlled variants | All observed controlled variants |
 | Stage 2 trust | Participants preferring Fixcard's trustworthiness | Participants answering the comparison once |
 | Stage 3 relevance | Relevant strong rank-one matches | All displayed strong rank-one matches |
+| Stage 3 full-flow speed | Observed end-to-end lookups below 10 seconds | All observed end-to-end lookup timings |
 | Stage 3 capture behavior | Weekly active users creating at least three cards | Weekly active users for the same repository-weeks |
 | Stage 3 reuse | Unique active users who reused a card or had a teammate reuse one | Unique active pilot users over four weeks |
 | Differentiation | Pilot users who distinguish Fixcard from alternatives | Pilot users answering the differentiation question |
+| Maintenance | Repositories reporting acceptable burden in week four | Repositories answering the week-four maintenance question |
 
 For creation and capture medians, publish the number of observed durations.
 For lookup performance, report tool-search measurements separately from the

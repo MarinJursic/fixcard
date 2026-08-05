@@ -102,6 +102,7 @@ body:
       value: |
         Secret-scanner catches before save:
         Secret-scanner false positives:
+        Users who bypassed or disabled scanning because of false positives:
         Real secrets found after save:
         Misleading-certainty incidents:
         Unsafe-action incidents:

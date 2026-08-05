@@ -83,7 +83,8 @@ After four weeks, maintainers aggregate only the submitted counts and publish:
 - weekly active-user capture behavior and its denominator;
 - author and teammate reuse rates and counts;
 - shared-card acceptance through normal pull-request review;
-- scanner catches, false positives, missed secrets, and safety incidents;
+- scanner catches, false positives, users bypassing scanning because of false
+  positives, missed secrets, and safety incidents;
 - differentiation responses and maintenance burden;
 - repository/ecosystem coverage;
 - an explicit go, change, or stop decision.

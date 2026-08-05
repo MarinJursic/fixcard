@@ -46,7 +46,7 @@
 - Fixcard lookup versus normal-search duration samples:
 - Metadata confusion, privacy edits, and scanner false positives:
 - Participants preferring Fixcard trustworthiness / responses:
-- Maintainer-accepted cards and repositories represented:
+- Distinct maintainers accepting at least one committed card:
 - Pass, change, or stop:
 
 ## Stage 3 results
@@ -60,7 +60,7 @@
 - Weekly active users creating three or more cards / weekly active users:
 - Unique active reusers / active pilot users:
 - Shared cards submitted, accepted, changed, rejected, and retired:
-- Scanner catches, false positives, and missed real secrets:
+- Scanner catches, false positives, users bypassing scanning, and missed real secrets:
 - Serious trust or unsafe-certainty incidents:
 - Differentiation yes / responses:
 - Maintenance burden:

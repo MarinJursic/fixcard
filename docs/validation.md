@@ -86,7 +86,8 @@ trust, and whether maintainers would accept shared cards.
 Pass only when median concierge creation is at most 30 seconds, at least 70% of
 seeded recurrences return the correct card first, at least 60% of participants
 prefer its trustworthiness to a generic generated answer, and at least five
-repository maintainers accept committed cards after reviewing real examples.
+distinct repository maintainers accept committed cards after reviewing real
+examples.
 
 ### Stage 3 — four-week dogfood
 
@@ -104,15 +105,15 @@ passes and the four-week pilot meets all core thresholds:
 | Metric | Required signal |
 | --- | --- |
 | Match precision | At least 75% of strong rank-one matches judged relevant; target 85% before broad promotion |
-| Lookup latency | Search below 100 ms and the full human lookup flow usually below 10 seconds |
+| Lookup latency | Search below 100 ms and a strict majority of observed full human lookup flows below 10 seconds |
 | Creation friction | Median at or below 20 seconds after the resolution is known |
 | Capture behavior | At least 50% of weekly active pilot users create three or more cards |
 | Reuse | At least 30% of active users consume a prior card within four weeks, or a teammate consumes one |
-| Team acceptance | At least five shared cards accepted through normal pull-request review across multiple repositories |
+| Team acceptance | At least five shared cards accepted through normal pull-request review across at least two repositories |
 | Trust | No serious incident caused by misleading certainty or automatic execution |
-| Privacy | No undetected real secret in the pilot corpus and false-positive burden low enough that scanning is not bypassed |
+| Privacy | No undetected real secret in the pilot corpus and no user bypasses scanning because of false positives |
 | Differentiation | A majority of pilot users can explain why Fixcard is not simply history, Atuin, Recall, Navi, or a README |
-| Maintenance | Burden remains acceptable to participating repositories |
+| Maintenance | A strict majority of responding repositories report acceptable week-four burden |
 
 Change the capture or matching design if usefulness exists but a threshold
 misses. Stop expanding the product if developers consistently decline capture,

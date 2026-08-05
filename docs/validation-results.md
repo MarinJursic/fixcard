@@ -72,8 +72,9 @@ The research-kit checker accepts an exact RC6 Stage 3 row and deliberately
 mutates the same row to prove that RC5 and blank versions are rejected. The
 standalone validator also rejects malformed counts, mixed builds, duplicate
 repository-weeks, decreasing cumulative reuse, incomplete four-week coverage,
-and repository counts outside 5–8. These controls prevent evidence mixing; they
-do not turn empty, missing, or adverse observations into a pass.
+excess timing samples, scanner-bypass counts above pilot users, and repository
+counts outside 5–8. These controls prevent evidence mixing; they do not turn
+empty, missing, or adverse observations into a pass.
 
 ## Reporting
 
