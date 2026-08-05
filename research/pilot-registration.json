@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "status": "pre_data_amendment",
+  "registered_on": "2026-08-05",
+  "protocol": {
+    "commit": "6a10e0556576a80e481a2ca362544f81bd05977f",
+    "documents": [
+      "docs/research-study.md",
+      "docs/research-operations.md",
+      "docs/validation.md",
+      "docs/dogfood.md"
+    ],
+    "raw_data_location": "access_controlled_outside_public_repository",
+    "public_data_policy": "sanitized_aggregates_only"
+  },
+  "amendment": {
+    "supersedes_version": "1.0.0-rc.5",
+    "reason": "RC5 contained the intended bare-fix workflow but its Unicode normalization pipeline was not idempotent for all inputs. The corrected build was frozen before any eligible external observation was submitted.",
+    "carry_forward_eligible_evidence": false,
+    "eligible_evidence_at_registration": {
+      "permissioned_second_reviewed_real_pairs": 0,
+      "stage_1_recruited_participants": 0,
+      "stage_1_completed_two_week_diaries": 0,
+      "stage_2_real_card_observations": 0,
+      "stage_3_repositories": 0,
+      "stage_3_repository_weeks": 0
+    }
+  },
+  "pilot": {
+    "version": "1.0.0-rc.6",
+    "tag": "v1.0.0-rc.6",
+    "commit": "6a10e0556576a80e481a2ca362544f81bd05977f",
+    "eligible_observations_on_or_after": "2026-08-06",
+    "working_weeks": 4,
+    "repositories": {
+      "minimum": 5,
+      "maximum": 8
+    },
+    "build_switching": "forbidden",
+    "security_fix_rule": "stop_document_and_preregister_restart"
+  },
+  "release": {
+    "url": "https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.6",
+    "workflow_url": "https://github.com/MarinJursic/fixcard/actions/runs/30984877313",
+    "prerelease": true,
+    "asset_count": 8,
+    "sbom_asset": "fixcard.cdx.json",
+    "checksum_asset": "SHA256SUMS",
+    "archive_sha256": {
+      "fixcard-1.0.0-rc.6-aarch64-apple-darwin.tar.gz": "faec6a30e09b03bed3912085f0279a5162f7c72e2f2fdc3984ee59f402506133",
+      "fixcard-1.0.0-rc.6-aarch64-unknown-linux-gnu.tar.gz": "946f2edb791858a43029460f5b98cb8c414558bb01e47258e296537407a673a7",
+      "fixcard-1.0.0-rc.6-x86_64-apple-darwin.tar.gz": "202f32719d7b39c253605d62a342938beb9ad0bc77bbeefff1c93670c2670bd7",
+      "fixcard-1.0.0-rc.6-x86_64-pc-windows-msvc.zip": "50db658b2e9c03c6dc6a44108ff36f4766dfd3022cbdf052d4776f9ca579a844",
+      "fixcard-1.0.0-rc.6-x86_64-unknown-linux-gnu.tar.gz": "64f7bf28f470303dd06bb9b1b938a69ce7650fa4c6719cbff466ecde694e8cdb",
+      "fixcard-1.0.0-rc.6-x86_64-unknown-linux-musl.tar.gz": "6dd0a0fafb7d7638db37ce521eb8c4aa21b107e017a10152f7c1f20739861bf6"
+    }
+  },
+  "fixed_gates": {
+    "milestone_0": {
+      "real_pairs_minimum": 100,
+      "permission_required": true,
+      "second_person_review_required": true
+    },
+    "stage_1": {
+      "recruited_participants_minimum": 24,
+      "recruited_participants_maximum": 30,
+      "working_weeks": 2,
+      "reusable_failure_participant_share_minimum": 0.3333333333,
+      "denominator": "all_recruited_participants"
+    },
+    "stage_2": {
+      "real_cards_per_participant": 3,
+      "median_creation_seconds_maximum": 30,
+      "correct_rank_one_share_minimum": 0.7,
+      "trust_preference_share_minimum": 0.6,
+      "maintainer_accepted_cards_minimum": 5
+    },
+    "stage_3": {
+      "strong_rank_one_relevance_share_minimum": 0.75,
+      "strong_rank_one_relevance_target": 0.85,
+      "search_p95_ms_maximum": 100,
+      "full_lookup_under_ten_seconds_requirement": "usually",
+      "median_capture_seconds_maximum": 20,
+      "active_users_with_three_cards_share_minimum": 0.5,
+      "active_user_reuse_share_minimum": 0.3,
+      "shared_cards_accepted_minimum": 5,
+      "serious_trust_incidents_maximum": 0,
+      "missed_real_secrets_maximum": 0,
+      "differentiation_share_requirement": "strict_majority",
+      "maintenance_burden_requirement": "acceptable"
+    },
+    "stable_promotion": "milestone_0_and_every_stage_and_every_kill_criterion_reviewed"
+  },
+  "kill_criteria": [
+    {
+      "id": 1,
+      "criterion": "More than 80% of relevant developers create no card after onboarding."
+    },
+    {
+      "id": 2,
+      "criterion": "Median creation remains above 30 seconds."
+    },
+    {
+      "id": 3,
+      "criterion": "Strong-match false positives exceed 20%."
+    },
+    {
+      "id": 4,
+      "criterion": "Most users prefer ordinary history, Atuin, Recall, or equivalent search."
+    },
+    {
+      "id": 5,
+      "criterion": "Fewer than 10% of cards are reused by another person over eight weeks in active teams."
+    },
+    {
+      "id": 6,
+      "criterion": "Teams refuse committed cards as clutter or liability."
+    },
+    {
+      "id": 7,
+      "criterion": "Secret redaction is not reliable enough for shared cards."
+    },
+    {
+      "id": 8,
+      "criterion": "Cards become stale faster than they are used."
+    },
+    {
+      "id": 9,
+      "criterion": "The product needs automatic terminal capture to feel valuable."
+    },
+    {
+      "id": 10,
+      "criterion": "Adoption depends on AI generation, cloud sync, or workflow replay."
+    }
+  ]
+}

@@ -17,6 +17,12 @@ to an access-controlled location and record:
 - the pass, change, stop, and kill criteria without weakening them later;
 - who may inspect participant-controlled raw notes and when they are destroyed.
 
+The current Stage 3 registration is machine-readable in
+[`research/pilot-registration.json`](../research/pilot-registration.json). It
+freezes the exact tag, commit, archive digests, eligible start date, denominators,
+thresholds, and all ten kill criteria before observations begin. A prose issue
+or release announcement cannot override that file.
+
 Participant aliases use `P001`, `P002`, and so on. Repository aliases use
 `R001`, `R002`, and so on. Context aliases such as `PB01` describe a team or
 working context without naming it. Keep the alias key separate from study data.
@@ -122,6 +128,17 @@ immediately and cannot be averaged away by more activity.
 Do not switch builds mid-pilot. If a security fix requires a new build, stop,
 document the interruption, and preregister whether the affected observation
 period must restart.
+
+Before aggregation, validate the access-controlled Stage 3 CSV with:
+
+```sh
+ruby scripts/research_evidence.rb --complete-pilot /path/to/stage-3.csv
+```
+
+The command is intentionally fail-closed for blank or nonregistered versions,
+duplicate repository-weeks, impossible count relationships, incomplete weeks,
+and repository coverage outside 5–8. Do not edit the validator or registration
+after seeing results to make a report pass.
 
 ## 7. Use fixed denominators
 

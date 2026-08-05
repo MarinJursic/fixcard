@@ -20,14 +20,35 @@ body:
         - label: These are real-work observations, not synthetic incidents or reconstructed guesses.
           required: true
 
+  - type: dropdown
+    id: exact_pilot_build
+    attributes:
+      label: Exact registered pilot build
+      description: Reports from any other build are ineligible and cannot be carried forward.
+      options:
+        - 1.0.0-rc.6
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: build_confirmation
+    attributes:
+      label: Installed-build confirmation
+      options:
+        - label: I ran `fixcard --version` before collection and it reported `fixcard 1.0.0-rc.6`.
+          required: true
+        - label: I ran `fix --version` before collection and it reported `fix 1.0.0-rc.6`.
+          required: true
+        - label: Every observation in this report was made on or after 2026-08-06 using this unchanged build.
+          required: true
+
   - type: textarea
     id: study_context
     attributes:
       label: Study context
-      description: Use the same random, non-identifying repository alias every week. Obtain the version from `fixcard --version`.
+      description: Use the same random, non-identifying repository alias every week. Do not repeat raw version output here.
       value: |
         Anonymous repository alias:
-        Fixcard version:
         Report sequence (for example, week 1 of 4):
         Observation period (YYYY-MM-DD through YYYY-MM-DD):
         Repository kind (public OSS / private work / private personal / mixed):
@@ -41,7 +62,7 @@ body:
     id: retrieval_counts
     attributes:
       label: Retrieval and workflow counts
-      description: Count a strong result as relevant only when it was the correct first response for the real incident. List observed end-to-end lookup durations as comma-separated seconds.
+      description: Count a strong result as relevant only when it was the correct first response for the real incident. List observed durations comma-separated here; the coordinator converts them to the CSV's semicolon-delimited sample field.
       value: |
         Lookups attempted:
         Strong rank-one results:
@@ -59,7 +80,7 @@ body:
     id: capture_reuse_counts
     attributes:
       label: Capture, review, reuse, and retirement
-      description: Authoring durations begin after the resolution is already known. Use comma-separated observed seconds; do not estimate missing measurements.
+      description: Authoring durations begin after the resolution is already known. Use comma-separated observed seconds here; the coordinator converts them to the CSV's semicolon-delimited sample field. Do not estimate missing measurements.
       value: |
         Cards authored:
         Authoring durations in seconds:

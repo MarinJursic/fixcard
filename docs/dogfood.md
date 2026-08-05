@@ -14,18 +14,32 @@ covering more than one ecosystem and both personal and team use where possible.
 
 ## Start
 
-1. Install the newest release candidate from the
-   [releases page](https://github.com/MarinJursic/fixcard/releases).
-2. Run `fixcard status` and confirm the expected storage paths.
-3. Choose repository, clone-private, or user-global scope deliberately.
-4. After an ordinary failure, run bare `fix` and paste its stable failure text.
+The only registered Stage 3 build is
+[`1.0.0-rc.6`](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.6),
+at commit `6a10e0556576a80e481a2ca362544f81bd05977f`. Observations made before
+2026-08-06 or with another version are ineligible. No evidence from an earlier
+candidate carries forward.
+
+1. Install the exact `1.0.0-rc.6` release from the link above or the pinned
+   Homebrew formula.
+2. Run both `fixcard --version` and `fix --version`. Each must report its own
+   command name followed by `1.0.0-rc.6`; otherwise stop and correct the
+   installation before collecting observations.
+3. Run `fixcard status` and confirm the expected storage paths.
+4. Choose repository, clone-private, or user-global scope deliberately.
+5. After an ordinary failure, run bare `fix` and paste its stable failure text.
    When anticipating a failure, use `fix PROGRAM [ARGS...]` or its explicit
    `fixcard run -- PROGRAM [ARGS...]` equivalent.
-5. Do not create synthetic successes. Record normal development incidents.
+6. Do not create synthetic successes. Record normal development incidents.
 
 Before the first incident, record a stable random repository alias, the exact
-output of `fixcard --version`, the number of pilot users with repository access,
-and the report week. Never use the real repository name as its alias.
+outputs of both version commands, the number of pilot users with repository
+access, and the report week. Never use the real repository name as its alias.
+
+Do not switch builds during the four-week period. If a security fix is required,
+stop collection, document the interruption, and preregister the replacement and
+restart before collecting more observations. Product or usability changes do
+not qualify for that exception.
 
 ## Private local worksheet
 
@@ -76,3 +90,10 @@ After four weeks, maintainers aggregate only the submitted counts and publish:
 
 Missing data is reported as missing. Stars, downloads, total card count, and
 synthetic examples do not substitute for relevance or reuse.
+
+Before aggregation, export repository-week rows to the blank Stage 3 CSV and
+run `ruby scripts/research_evidence.rb --complete-pilot PATH.csv`. The validator
+rejects blank or mixed versions, duplicate repository-weeks, invalid counts,
+inconsistent fixed denominators, incomplete four-week coverage, and repository
+counts outside the preregistered 5–8 range. A successful validation checks the
+data shape and exact build; it does not make missing or adverse evidence pass.
