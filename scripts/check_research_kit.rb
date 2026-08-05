@@ -148,6 +148,28 @@ begin
     )
     errors << "Stage 3 excess-timing-samples mutation was accepted" if timing_errors.empty?
 
+    contradictory_timing_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "lookup_attempts" => "2",
+        "end_to_end_lookup_seconds_samples" => "12;13",
+        "full_lookups_under_ten_seconds" => "2"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 contradictory under-ten timing mutation was accepted" if contradictory_timing_errors.empty?
+
+    valid_timing_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "lookup_attempts" => "3",
+        "end_to_end_lookup_seconds_samples" => "9;10;2.5",
+        "full_lookups_under_ten_seconds" => "2"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 derived under-ten timing control failed: #{valid_timing_errors.join('; ')}" unless valid_timing_errors.empty?
+
     scanner_errors = ResearchEvidence.validate_stage3_table(
       build_row.call(
         exact_version,

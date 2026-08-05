@@ -286,9 +286,11 @@ module ResearchEvidence
          sample_counts["capture_seconds_samples"] > counts["authored_cards"]
         errors << "line #{line}: capture timing samples cannot exceed authored_cards"
       end
-      if counts["full_lookups_under_ten_seconds"] && sample_counts["end_to_end_lookup_seconds_samples"] &&
-         counts["full_lookups_under_ten_seconds"] > sample_counts["end_to_end_lookup_seconds_samples"]
-        errors << "line #{line}: under-ten-second count cannot exceed observed end-to-end timing samples"
+      if counts["full_lookups_under_ten_seconds"] && sample_counts["end_to_end_lookup_seconds_samples"]
+        observed_under_ten = row["end_to_end_lookup_seconds_samples"].split(";").count { |sample| sample.to_f < 10 }
+        unless counts["full_lookups_under_ten_seconds"] == observed_under_ten
+          errors << "line #{line}: full_lookups_under_ten_seconds must equal the count derived from timing samples"
+        end
       end
 
       unless row["search_p95_ms"].nil? || row["search_p95_ms"].empty? || (numeric?(row["search_p95_ms"]) && row["search_p95_ms"].to_f >= 0)
