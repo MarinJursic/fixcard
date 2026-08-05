@@ -3,7 +3,7 @@
   "status": "pre_data_amendment",
   "registered_on": "2026-08-05",
   "protocol": {
-    "commit": "cccbd66d7bead9aab824004e84ccae5f4be0b21b",
+    "commit": "d9220d41707a837f9a544138b12800ca193f5c58",
     "documents": [
       "docs/research-study.md",
       "docs/research-operations.md",
