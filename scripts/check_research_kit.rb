@@ -159,6 +159,16 @@ begin
     )
     errors << "Stage 3 contradictory under-ten timing mutation was accepted" if contradictory_timing_errors.empty?
 
+    missing_timing_count_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "lookup_attempts" => "2",
+        "end_to_end_lookup_seconds_samples" => "8;12"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 missing derived timing count was accepted" if missing_timing_count_errors.empty?
+
     valid_timing_errors = ResearchEvidence.validate_stage3_table(
       build_row.call(
         exact_version,
