@@ -1,12 +1,14 @@
 # Validation results
 
-Last assessed: 2026-08-04.
+Last assessed: 2026-08-05.
 
 ## Decision
 
-**Insufficient evidence — remain on `1.0.0-rc.5`.** Engineering verification is
-green, but no eligible primary-research or dogfood report has been submitted.
-Missing evidence is not treated as a zero, a pass, or a reconstructed estimate.
+**Insufficient evidence — do not promote stable 1.0.** The current engineering
+candidate is `1.0.0-rc.5`, but the exact preregistered Stage 3 build remains
+`1.0.0-rc.4`. Engineering verification is green, but no eligible
+primary-research or dogfood report has been submitted. Missing evidence is not
+treated as a zero, a pass, or a reconstructed estimate.
 
 ## Evidence ledger
 
@@ -15,12 +17,33 @@ Missing evidence is not treated as a zero, a pass, or a reconstructed estimate.
 | Evidence corpus | At least 100 sanitized real failure/resolution pairs with permission and second-person review | None submitted | Not started / not documented |
 | Problem diary | 24–30 developers across the specified contexts, roles, and platforms for two working weeks | None submitted | Not started / not documented |
 | Concierge workflow | Three real cards per participant plus controlled recurrences and maintainer review | None submitted | Not started / not documented |
-| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.5` published 2026-08-04; no eligible report issues submitted | Not started / insufficient |
+| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.4` published 2026-08-04; no eligible report issues submitted | Not started / insufficient |
 
 All product thresholds therefore remain unproven, including recurrence
 frequency, concierge creation time, seeded retrieval precision, comparative
 trust, real rank-one relevance, capture behavior, reuse, team acceptance,
 privacy false-positive burden, differentiation, and maintenance burden.
+
+## Stage 3 build freeze
+
+The exact Stage 3 build is `1.0.0-rc.4` at commit
+[`acf0c079`](https://github.com/MarinJursic/fixcard/commit/acf0c07944700085d56f50a02b26bbdf2525272d).
+The later `1.0.0-rc.5` engineering candidate does not replace it for pilot
+evidence: no security-fix interruption and restart was documented under the
+[research operations rule](research-operations.md#6-run-stage-3-on-one-exact-build).
+
+Eligible evidence carried between builds is therefore zero. Reports from RC5
+must remain separate and cannot contribute to RC4 denominators. If a future
+security fix requires a replacement build, the coordinator must stop,
+document the interruption, preregister the replacement and restart treatment,
+and update this ledger through the protected pull-request workflow before any
+new observation period is counted.
+
+RC4 predates RC5's bare-`fix` paste workflow. Even a complete RC4 pilot cannot
+be used to claim that the RC5-only workflow passed product validation or to
+promote RC5 as the exact validated build. Stable promotion of the current
+feature-complete product therefore requires an authorized build change and a
+fresh, unmixed observation period on that exact replacement.
 
 ## Verified engineering baseline
 

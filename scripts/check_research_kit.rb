@@ -5,6 +5,7 @@ require "csv"
 require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").cleanpath
+EXACT_STAGE_3_BUILD = "1.0.0-rc.4"
 
 EXPECTED_HEADERS = {
   "stage-1-participants.csv" => %w[
@@ -77,6 +78,38 @@ if report.file?
   end
 else
   errors << "missing research template: research/templates/aggregate-report.md"
+end
+
+pilot_build_references = {
+  "docs/dogfood.md" => [
+    "exact preregistered pilot build",
+    "`v#{EXACT_STAGE_3_BUILD}`",
+    "`#{EXACT_STAGE_3_BUILD}`",
+    "Bare `fix` shows status in RC4",
+    "RC4 observations cannot validate RC5-only behavior"
+  ],
+  "docs/validation-results.md" => [
+    "exact preregistered Stage 3 build remains",
+    "Exact pilot build `#{EXACT_STAGE_3_BUILD}`",
+    "The exact Stage 3 build is `#{EXACT_STAGE_3_BUILD}`",
+    "RC4 predates RC5's bare-`fix` paste workflow"
+  ],
+  ".github/ISSUE_TEMPLATE/validation-report.yml" => [
+    "The exact Stage 3 build is `#{EXACT_STAGE_3_BUILD}`"
+  ]
+}
+
+pilot_build_references.each do |name, required_text|
+  path = ROOT.join(name)
+  unless path.file?
+    errors << "missing pilot-build reference: #{name}"
+    next
+  end
+
+  source = path.read
+  required_text.each do |text|
+    errors << "#{name}: missing exact-build guard #{text.inspect}" unless source.include?(text)
+  end
 end
 
 unless errors.empty?

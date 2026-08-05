@@ -14,18 +14,27 @@ covering more than one ecosystem and both personal and team use where possible.
 
 ## Start
 
-1. Install the newest release candidate from the
-   [releases page](https://github.com/MarinJursic/fixcard/releases).
+1. Install the exact preregistered pilot build,
+   [`v1.0.0-rc.4`](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.4).
+   Do not substitute a newer candidate or the moving Homebrew formula. The
+   coordinator must document a security interruption and restart before a
+   replacement build can contribute Stage 3 evidence.
 2. Run `fixcard status` and confirm the expected storage paths.
 3. Choose repository, clone-private, or user-global scope deliberately.
-4. After an ordinary failure, run bare `fix` and paste its stable failure text.
-   When anticipating a failure, use `fix PROGRAM [ARGS...]` or its explicit
-   `fixcard run -- PROGRAM [ARGS...]` equivalent.
+4. When anticipating a failure, use `fix PROGRAM [ARGS...]` or its explicit
+   `fixcard run -- PROGRAM [ARGS...]` equivalent. For an already observed
+   failure, supply its stable text explicitly with `fixcard fix TEXT...` or
+   pipe that text into `fix`. Bare `fix` shows status in RC4; the later
+   one-shot paste workflow is not part of this preregistered build.
 5. Do not create synthetic successes. Record normal development incidents.
 
-Before the first incident, record a stable random repository alias, the exact
-output of `fixcard --version`, the number of pilot users with repository access,
-and the report week. Never use the real repository name as its alias.
+Before the first incident, confirm that `fixcard --version` reports
+`1.0.0-rc.4`, then record a stable random repository alias, that exact version
+output, the number of pilot users with repository access, and the report week.
+Never use the real repository name as its alias. Reports from any other build
+remain separate and ineligible for this pilot unless the documented restart
+rule is invoked. RC4 observations cannot validate RC5-only behavior, including
+the bare-`fix` paste flow.
 
 ## Private local worksheet
 

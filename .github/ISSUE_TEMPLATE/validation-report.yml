@@ -8,6 +8,8 @@ body:
       value: |
         Thank you for testing Fixcard. Report only aggregated, sanitized metadata. Do not paste raw logs, credentials, private paths, internal hostnames, customer data, proprietary repository content, or the real repository name. Missing observations must stay missing rather than being estimated later.
 
+        The exact Stage 3 build is `1.0.0-rc.4`. Confirm it with `fixcard --version`. Reports from newer candidates remain separate and are ineligible for this pilot unless a documented security-fix restart changes the preregistration.
+
   - type: checkboxes
     id: privacy
     attributes:
