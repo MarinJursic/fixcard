@@ -39,7 +39,7 @@ EXPECTED_HEADERS = {
     maintenance_burden
   ],
   "stage-3-active-user-reuse.csv" => %w[
-    participant_alias fixcard_version active_during_weeks_1_4
+    participant_alias repository_alias fixcard_version active_during_weeks_1_4
     reused_or_teammate_reused_during_weeks_1_4
   ],
   "stage-3-eight-week-card-reuse.csv" => %w[
@@ -102,6 +102,27 @@ begin
   exact_version = registration.dig("pilot", "version")
   eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
 
+  version_mutation = JSON.parse(JSON.generate(registration))
+  version_mutation["pilot"]["version"] = "1.0.0-rc.6"
+  version_mutation_errors = ResearchEvidence.validate_registration(version_mutation)
+  unless version_mutation_errors.any? { |error| error.include?("exact pilot version") }
+    errors << "registration accepted a non-RC4 pilot version"
+  end
+
+  date_mutation = JSON.parse(JSON.generate(registration))
+  date_mutation["pilot"]["eligible_observations_on_or_after"] = "2026-08-11"
+  date_mutation_errors = ResearchEvidence.validate_registration(date_mutation)
+  unless date_mutation_errors.any? { |error| error.include?("eligible date differs") }
+    errors << "registration accepted a changed RC4 eligibility date"
+  end
+
+  checksum_mutation = JSON.parse(JSON.generate(registration))
+  checksum_mutation["release"]["archive_sha256"].values[0].replace("0" * 64)
+  checksum_mutation_errors = ResearchEvidence.validate_registration(checksum_mutation)
+  unless checksum_mutation_errors.any? { |error| error.include?("archive SHA-256 set differs") }
+    errors << "registration accepted changed RC4 archive digests"
+  end
+
   stage_2 = tables["stage-2-observations.csv"]
   if stage_2
     errors << "Stage 2 schema differs between the template checker and evidence validator" unless EXPECTED_HEADERS.fetch("stage-2-observations.csv") == ResearchEvidence::STAGE_2_HEADERS
@@ -125,9 +146,9 @@ begin
     errors << "Stage 3 active-user schema differs between checker and validator" unless EXPECTED_HEADERS.fetch("stage-3-active-user-reuse.csv") == ResearchEvidence::STAGE_3_USER_REUSE_HEADERS
     errors.concat(ResearchEvidence.validate_stage3_user_reuse_table(active_user_reuse, exact_version: exact_version))
     reuse_headers = EXPECTED_HEADERS.fetch("stage-3-active-user-reuse.csv")
-    reuse_row = lambda do |version, active: "true", reused: "true", participant: "P001"|
+    reuse_row = lambda do |version, active: "true", reused: "true", participant: "P001", repository: "R001"|
       CSV::Table.new([
-        CSV::Row.new(reuse_headers, [participant, version, active, reused])
+        CSV::Row.new(reuse_headers, [participant, repository, version, active, reused])
       ])
     end
     valid_reuse_errors = ResearchEvidence.validate_stage3_user_reuse_table(reuse_row.call(exact_version), exact_version: exact_version)
@@ -268,6 +289,17 @@ begin
     )
     errors << "Stage 3 scanner-bypass denominator mutation was accepted" if scanner_errors.empty?
 
+    cumulative_active_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "pilot_users" => "5",
+        "weekly_active_users" => "5",
+        "cumulative_unique_active_users" => "1"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 understated cumulative-active mutation was accepted" if cumulative_active_errors.empty?
+
     complete_rows = (1..5).flat_map do |repository_number|
       (1..4).map do |week|
         start_date = eligible_on + ((week - 1) * 7)
@@ -297,6 +329,38 @@ begin
       complete_pilot: true
     )
     errors << "Stage 3 complete-pilot control failed: #{complete_errors.join('; ')}" unless complete_errors.empty?
+
+    complete_reuse_rows = (1..5).map do |repository_number|
+      reuse_row.call(
+        exact_version,
+        reused: "false",
+        participant: format("P%03d", repository_number),
+        repository: format("R%03d", repository_number)
+      ).first
+    end
+    complete_reuse_table = CSV::Table.new(complete_reuse_rows)
+    coverage_errors = ResearchEvidence.validate_stage3_cross_file_coverage(
+      complete_table,
+      complete_reuse_table,
+      card_reuse
+    )
+    errors << "Stage 3 cross-file coverage control failed: #{coverage_errors.join('; ')}" unless coverage_errors.empty?
+
+    omitted_users_errors = ResearchEvidence.validate_stage3_cross_file_coverage(
+      complete_table,
+      CSV::Table.new(complete_reuse_rows.first(1)),
+      card_reuse
+    )
+    errors << "Stage 3 omitted active-user memberships were accepted" if omitted_users_errors.empty?
+
+    authored_without_card_rows = complete_rows.map(&:dup)
+    authored_without_card_rows.first["authored_cards"] = "1"
+    missing_cards_errors = ResearchEvidence.validate_stage3_cross_file_coverage(
+      CSV::Table.new(authored_without_card_rows),
+      complete_reuse_table,
+      card_reuse
+    )
+    errors << "Stage 3 omitted eight-week card rows were accepted" if missing_cards_errors.empty?
 
     incomplete_errors = ResearchEvidence.validate_stage3_table(
       CSV::Table.new(complete_rows[0...-1]),

@@ -60,8 +60,10 @@ Copy the blank Stage 3 repository-week, active-user, and eight-week card files f
 [`research/templates`](../research/templates) to an access-controlled
 coordinator location. Do not commit completed files or submit repository-week
 rows publicly. Keep the alias key separately and use one globally unique
-participant alias across repositories so the reuse denominator can be
-deduplicated without publishing identities.
+participant alias across repositories. Record one active-user row per
+participant/repository membership so its active and reuser counts reconcile
+exactly to each repository's week-four cumulative counts. Record one eight-week
+row for every card authored during weeks 1–4, including cards never reused.
 
 For each real lookup, privately record its date, repository alias, whether a
 strong result appeared, relevance or correct/incorrect abstention, search

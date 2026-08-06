@@ -139,11 +139,12 @@ deduplicated repository-level counts through that week; use week-four values
 and never sum cumulative values across weeks.
 
 The 30% reuse denominator is deduplicated across repositories in the separate
-access-controlled `stage-3-active-user-reuse.csv`. Use one global participant
-alias across all participating repositories and keep the identity key separate
-from study data. Count every unique participant active at least once in weeks
-1–4 in the denominator and every such participant who reused a card or had a
-teammate reuse one in the numerator.
+access-controlled `stage-3-active-user-reuse.csv`. Record one row per
+participant/repository membership, use the same global participant alias across
+repositories, and keep the identity key separate from study data. For every
+repository, active and reuser membership rows must equal its week-four
+cumulative counts. Deduplicate participant aliases across those reconciled
+rows for the global denominator and numerator.
 
 The eight-week kill-criterion denominator is represented separately in
 `stage-3-eight-week-card-reuse.csv`: one anonymous row for every card authored
@@ -151,7 +152,8 @@ during weeks 1–4, whether it became available to teammates, and whether anothe
 person reused it by the end of that repository's week-eight follow-up. The
 fixed rate is unique available cards reused by another person divided by all
 cards available to teammates; do not count reuse events or exclude unused
-eligible cards.
+eligible cards. Each repository's row count must equal the sum of its weekly
+`authored_cards`; omitting an unreused card makes the evidence incomplete.
 Record differentiation responses and maintenance burden in the final week
 unless the protocol preregisters more frequent collection. A serious trust
 incident, unsafe-certainty incident, or missed real secret is reported

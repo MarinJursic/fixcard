@@ -19,6 +19,26 @@ module ResearchEvidence
   MAX_INPUT_BYTES = 10 * 1024 * 1024
   MAX_FIELD_BYTES = 100_000
 
+  EXPECTED_PILOT = {
+    "registered_on" => "2026-08-05",
+    "version" => "1.0.0-rc.4",
+    "tag" => "v1.0.0-rc.4",
+    "commit" => "acf0c07944700085d56f50a02b26bbdf2525272d",
+    "eligible_on" => "2026-08-10",
+    "release_url" => "https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.4",
+    "workflow_url" => "https://github.com/MarinJursic/fixcard/actions/runs/30926021852",
+    "homebrew_formula_commit" => "c22efbe78064a8c78192b778e270bb936e2cdb4d",
+    "homebrew_formula_url" => "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/c22efbe78064a8c78192b778e270bb936e2cdb4d/Formula/fixcard.rb",
+    "archive_sha256" => {
+      "fixcard-1.0.0-rc.4-aarch64-apple-darwin.tar.gz" => "9b9d28e7bc637ac6beb7f5c86175888ecc826b64aac1cd4de9116ef98306f0a0",
+      "fixcard-1.0.0-rc.4-aarch64-unknown-linux-gnu.tar.gz" => "fd1102510c4ec90753a3ae45bbc2bbda07ee666b11bfb5d78abd25403c082c90",
+      "fixcard-1.0.0-rc.4-x86_64-apple-darwin.tar.gz" => "ec17d3d9cb856b9b6d2acd7ce866ffbaf4fbcfd4ee9ef9702d403b427cfc2780",
+      "fixcard-1.0.0-rc.4-x86_64-pc-windows-msvc.zip" => "17d1c47875aaae8971a620608a5b236e5f79d4a1b8d697b893591b27f8e2b60d",
+      "fixcard-1.0.0-rc.4-x86_64-unknown-linux-gnu.tar.gz" => "513b4e0d4ca03def2749c555c8d85e8bf3f3e7d00847f17f3a3c503583b3237f",
+      "fixcard-1.0.0-rc.4-x86_64-unknown-linux-musl.tar.gz" => "49cfce7b2d20588694446f1f25a325bd296b525148fb246cd27c92a911bdd139"
+    }.freeze
+  }.freeze
+
   STAGE_2_HEADERS = %w[
     participant_alias card_alias maintainer_alias fixcard_version
     creation_seconds controlled_variants correct_rank_one
@@ -28,7 +48,7 @@ module ResearchEvidence
   ].freeze
 
   STAGE_3_USER_REUSE_HEADERS = %w[
-    participant_alias fixcard_version active_during_weeks_1_4
+    participant_alias repository_alias fixcard_version active_during_weeks_1_4
     reused_or_teammate_reused_during_weeks_1_4
   ].freeze
 
@@ -178,21 +198,22 @@ module ResearchEvidence
     return ["registration: top level must be an object"] unless registration.is_a?(Hash)
 
     errors = []
-    expected_version = registration.dig("pilot", "version").to_s
-    expected_tag = registration.dig("pilot", "tag").to_s
-    expected_commit = registration.dig("pilot", "commit").to_s
+    expected_version = EXPECTED_PILOT.fetch("version")
+    expected_tag = EXPECTED_PILOT.fetch("tag")
+    expected_commit = EXPECTED_PILOT.fetch("commit")
 
     errors << "registration: schema_version must be 1" unless registration["schema_version"] == 1
     errors << "registration: status must be pre_data_registration" unless registration["status"] == "pre_data_registration"
+    errors << "registration: registered_on differs from the frozen RC4 registration" unless registration["registered_on"] == EXPECTED_PILOT.fetch("registered_on")
     registered_on = begin
       Date.iso8601(registration.fetch("registered_on"))
     rescue ArgumentError, KeyError, TypeError
       errors << "registration: registered_on must be a real YYYY-MM-DD date"
       nil
     end
-    errors << "registration: exact pilot version is missing" unless expected_version.to_s.match?(/\A1\.0\.0-rc\.\d+\z/)
-    errors << "registration: tag must equal v + version" unless expected_tag == "v#{expected_version}"
-    errors << "registration: commit must be a full SHA-1" unless expected_commit.to_s.match?(/\A[0-9a-f]{40}\z/)
+    errors << "registration: exact pilot version must remain #{expected_version}" unless registration.dig("pilot", "version") == expected_version
+    errors << "registration: exact pilot tag must remain #{expected_tag}" unless registration.dig("pilot", "tag") == expected_tag
+    errors << "registration: exact pilot commit must remain #{expected_commit}" unless registration.dig("pilot", "commit") == expected_commit
     protocol_commit = registration.dig("protocol", "commit").to_s
     errors << "registration: protocol commit must be a full SHA-1" unless protocol_commit.match?(/\A[0-9a-f]{40}\z/)
     errors << "registration: protocol commit must differ from the product build commit" if protocol_commit == expected_commit
@@ -218,27 +239,20 @@ module ResearchEvidence
       errors << "registration: eligible observation date must use YYYY-MM-DD"
       nil
     end
+    errors << "registration: eligible date differs from the frozen RC4 registration" unless registration.dig("pilot", "eligible_observations_on_or_after") == EXPECTED_PILOT.fetch("eligible_on")
     errors << "registration: observations must begin after registration" if registered_on && eligible_on && eligible_on <= registered_on
 
     checksums = registration.dig("release", "archive_sha256")
-    expected_assets = %w[
-      aarch64-apple-darwin.tar.gz aarch64-unknown-linux-gnu.tar.gz
-      x86_64-apple-darwin.tar.gz x86_64-pc-windows-msvc.zip
-      x86_64-unknown-linux-gnu.tar.gz x86_64-unknown-linux-musl.tar.gz
-    ].map { |suffix| "fixcard-#{expected_version}-#{suffix}" }
-    unless checksums.is_a?(Hash) && checksums.keys.sort == expected_assets.sort && checksums.values.all? { |digest| digest.match?(/\A[0-9a-f]{64}\z/) }
-      errors << "registration: exactly six archive SHA-256 digests are required"
-    end
+    errors << "registration: RC4 archive SHA-256 set differs" unless checksums == EXPECTED_PILOT.fetch("archive_sha256")
 
-    errors << "registration: release URL must match the exact tag" unless registration.dig("release", "url") == "https://github.com/MarinJursic/fixcard/releases/tag/#{expected_tag}"
+    errors << "registration: RC4 release URL differs" unless registration.dig("release", "url") == EXPECTED_PILOT.fetch("release_url")
+    errors << "registration: RC4 release workflow differs" unless registration.dig("release", "workflow_url") == EXPECTED_PILOT.fetch("workflow_url")
     errors << "registration: release must remain a prerelease" unless registration.dig("release", "prerelease") == true
     errors << "registration: release must contain eight assets" unless registration.dig("release", "asset_count") == 8
     errors << "registration: checksum asset must be SHA256SUMS" unless registration.dig("release", "checksum_asset") == "SHA256SUMS"
     errors << "registration: SBOM asset must be fixcard.cdx.json" unless registration.dig("release", "sbom_asset") == "fixcard.cdx.json"
-    formula_commit = registration.dig("release", "homebrew_formula_commit").to_s
-    errors << "registration: Homebrew formula commit must be a full SHA-1" unless formula_commit.match?(/\A[0-9a-f]{40}\z/)
-    expected_formula_url = "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/#{formula_commit}/Formula/fixcard.rb"
-    errors << "registration: Homebrew formula URL must be immutable" unless registration.dig("release", "homebrew_formula_url") == expected_formula_url
+    errors << "registration: RC4 Homebrew formula commit differs" unless registration.dig("release", "homebrew_formula_commit") == EXPECTED_PILOT.fetch("homebrew_formula_commit")
+    errors << "registration: RC4 Homebrew formula URL differs" unless registration.dig("release", "homebrew_formula_url") == EXPECTED_PILOT.fetch("homebrew_formula_url")
 
     errors << "registration: fixed gates differ from the predeclared protocol" unless registration["fixed_gates"] == EXPECTED_FIXED_GATES
 
@@ -341,9 +355,12 @@ module ResearchEvidence
     table.each_with_index do |row, index|
       line = index + 2
       participant = row["participant_alias"].to_s
+      repository = row["repository_alias"].to_s
+      key = [participant, repository]
       errors << "line #{line}: participant_alias must look like P001" unless participant.match?(/\AP\d{3,}\z/)
-      errors << "line #{line}: duplicate participant_alias #{participant.inspect}" if seen[participant]
-      seen[participant] = true
+      errors << "line #{line}: repository_alias must look like R001" unless repository.match?(/\AR\d{3,}\z/)
+      errors << "line #{line}: duplicate participant/repository #{key.inspect}" if seen[key]
+      seen[key] = true
       version = row["fixcard_version"].to_s
       errors << "line #{line}: fixcard_version must be exactly #{exact_version.inspect}, got #{version.inspect}" unless version == exact_version
       %w[active_during_weeks_1_4 reused_or_teammate_reused_during_weeks_1_4].each do |field|
@@ -462,6 +479,7 @@ module ResearchEvidence
       errors << "line #{line}: pilot_users must be at least 1 when reported" if counts["pilot_users"] == 0
 
       validate_upper_bound(errors, line, counts, "weekly_active_users", "pilot_users")
+      validate_lower_bound(errors, line, counts, "cumulative_unique_active_users", "weekly_active_users")
       validate_upper_bound(errors, line, counts, "active_users_with_three_cards", "weekly_active_users")
       validate_upper_bound(errors, line, counts, "strong_matches", "lookup_attempts")
       validate_upper_bound(errors, line, counts, "relevant_strong_matches", "strong_matches")
@@ -594,6 +612,54 @@ module ResearchEvidence
     errors
   end
 
+  def validate_stage3_cross_file_coverage(pilot_table, user_reuse_table, card_reuse_table)
+    errors = []
+    final_active = {}
+    final_reusers = {}
+    authored_totals = Hash.new(0)
+
+    pilot_table.each do |row|
+      repository = row["repository_alias"].to_s
+      authored_totals[repository] += integer(row["authored_cards"]).to_i
+      next unless integer(row["week"]) == 4
+
+      final_active[repository] = integer(row["cumulative_unique_active_users"])
+      final_reusers[repository] = integer(row["cumulative_unique_active_reusers"])
+    end
+
+    membership_active = Hash.new(0)
+    membership_reusers = Hash.new(0)
+    user_reuse_table.each do |row|
+      repository = row["repository_alias"].to_s
+      unless final_active.key?(repository)
+        errors << "active-user reuse: #{repository.inspect} is absent from the complete pilot"
+        next
+      end
+      membership_active[repository] += 1 if row["active_during_weeks_1_4"] == "true"
+      membership_reusers[repository] += 1 if row["reused_or_teammate_reused_during_weeks_1_4"] == "true"
+    end
+
+    final_active.each do |repository, expected|
+      errors << "active-user reuse: #{repository} active memberships must equal week-four cumulative active users" unless membership_active[repository] == expected
+      errors << "active-user reuse: #{repository} reuser memberships must equal week-four cumulative active reusers" unless membership_reusers[repository] == final_reusers[repository]
+    end
+
+    card_counts = Hash.new(0)
+    card_reuse_table.each do |row|
+      repository = row["repository_alias"].to_s
+      unless authored_totals.key?(repository)
+        errors << "eight-week card reuse: #{repository.inspect} is absent from the complete pilot"
+        next
+      end
+      card_counts[repository] += 1
+    end
+    authored_totals.each do |repository, expected|
+      errors << "eight-week card reuse: #{repository} rows must equal authored_cards across weeks 1–4" unless card_counts[repository] == expected
+    end
+
+    errors
+  end
+
   def integer(value)
     Integer(value, 10)
   rescue ArgumentError, TypeError
@@ -626,6 +692,13 @@ module ResearchEvidence
     return if counts[numerator] <= counts[denominator]
 
     errors << "line #{line}: #{numerator} cannot exceed #{denominator}"
+  end
+
+  def validate_lower_bound(errors, line, counts, value, minimum)
+    return unless counts[value] && counts[minimum]
+    return if counts[value] >= counts[minimum]
+
+    errors << "line #{line}: #{value} cannot be lower than #{minimum}"
   end
 
   def read_csv(path)
@@ -678,6 +751,7 @@ if $PROGRAM_NAME == __FILE__
           complete_pilot: complete_pilot
         )
       )
+      reuse_table = nil
       if reuse_path
         reuse_table = ResearchEvidence.read_csv(reuse_path)
         errors.concat(ResearchEvidence.validate_stage3_user_reuse_table(reuse_table, exact_version: exact_version))
@@ -685,6 +759,7 @@ if $PROGRAM_NAME == __FILE__
           errors << "complete pilot: active-user reuse denominator must contain at least one active participant"
         end
       end
+      card_reuse_table = nil
       if card_reuse_path
         card_reuse_table = ResearchEvidence.read_csv(card_reuse_path)
         pilot_periods = table.each_with_object({}) do |row, periods|
@@ -705,6 +780,15 @@ if $PROGRAM_NAME == __FILE__
             exact_version: exact_version,
             eligible_on: eligible_on,
             pilot_periods: pilot_periods
+          )
+        )
+      end
+      if complete_pilot && reuse_table && card_reuse_table
+        errors.concat(
+          ResearchEvidence.validate_stage3_cross_file_coverage(
+            table,
+            reuse_table,
+            card_reuse_table
           )
         )
       end

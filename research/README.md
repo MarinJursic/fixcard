@@ -19,7 +19,8 @@ recruiting participants or collecting observations.
 - [`stage-3-repository-weeks.csv`](templates/stage-3-repository-weeks.csv)
   records one aggregate row per anonymous repository and pilot week.
 - [`stage-3-active-user-reuse.csv`](templates/stage-3-active-user-reuse.csv)
-  globally deduplicates the active-user reuse denominator without publishing
+  records reconciled participant/repository memberships so the global
+  active-user reuse denominator can be deduplicated without publishing
   identities.
 - [`stage-3-eight-week-card-reuse.csv`](templates/stage-3-eight-week-card-reuse.csv)
   freezes the card-level denominator for kill criterion 5.
