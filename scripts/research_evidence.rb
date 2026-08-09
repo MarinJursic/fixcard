@@ -21,6 +21,8 @@ module ResearchEvidence
 
   EXPECTED_PILOT = {
     "registered_on" => "2026-08-05",
+    "amendment_supersedes_version" => "1.0.0-rc.3",
+    "amendment_reason" => "RC4 was frozen as the exact Stage 3 treatment before any eligible external observation. Later product and usability builds do not qualify for the security-fix restart exception and are excluded from this pilot.",
     "version" => "1.0.0-rc.4",
     "tag" => "v1.0.0-rc.4",
     "commit" => "acf0c07944700085d56f50a02b26bbdf2525272d",
@@ -219,6 +221,8 @@ module ResearchEvidence
     errors << "registration: protocol commit must differ from the product build commit" if protocol_commit == expected_commit
     errors << "registration: raw data must remain access-controlled" unless registration.dig("protocol", "raw_data_location") == "access_controlled_outside_public_repository"
     errors << "registration: public data must be sanitized aggregates only" unless registration.dig("protocol", "public_data_policy") == "sanitized_cross_repository_aggregates_with_small_cell_suppression"
+    errors << "registration: amendment superseded version differs from the frozen RC4 registration" unless registration.dig("amendment", "supersedes_version") == EXPECTED_PILOT.fetch("amendment_supersedes_version")
+    errors << "registration: amendment reason differs from the frozen RC4 registration" unless registration.dig("amendment", "reason") == EXPECTED_PILOT.fetch("amendment_reason")
     errors << "registration: evidence must not carry forward" unless registration.dig("amendment", "carry_forward_eligible_evidence") == false
 
     counts = registration.dig("amendment", "eligible_evidence_at_registration")
@@ -481,6 +485,16 @@ module ResearchEvidence
       validate_upper_bound(errors, line, counts, "weekly_active_users", "pilot_users")
       validate_lower_bound(errors, line, counts, "cumulative_unique_active_users", "weekly_active_users")
       validate_upper_bound(errors, line, counts, "active_users_with_three_cards", "weekly_active_users")
+      if counts.fetch("active_users_with_three_cards", 0).positive?
+        if counts.key?("authored_cards")
+          minimum_authored_cards = counts.fetch("active_users_with_three_cards") * 3
+          if counts.fetch("authored_cards") < minimum_authored_cards
+            errors << "line #{line}: authored_cards must be at least three per active_users_with_three_cards"
+          end
+        else
+          errors << "line #{line}: authored_cards is required when active_users_with_three_cards is positive"
+        end
+      end
       validate_upper_bound(errors, line, counts, "strong_matches", "lookup_attempts")
       validate_upper_bound(errors, line, counts, "relevant_strong_matches", "strong_matches")
       %w[full_lookups_under_ten_seconds fixcard_used_first other_tool_used_first].each do |field|

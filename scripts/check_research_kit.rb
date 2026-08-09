@@ -123,6 +123,20 @@ begin
     errors << "registration accepted changed RC4 archive digests"
   end
 
+  supersedes_mutation = JSON.parse(JSON.generate(registration))
+  supersedes_mutation["amendment"]["supersedes_version"] = "1.0.0-rc.2"
+  supersedes_mutation_errors = ResearchEvidence.validate_registration(supersedes_mutation)
+  unless supersedes_mutation_errors.any? { |error| error.include?("amendment superseded version differs") }
+    errors << "registration accepted a changed amendment superseded version"
+  end
+
+  reason_mutation = JSON.parse(JSON.generate(registration))
+  reason_mutation["amendment"]["reason"] = "rewritten after registration"
+  reason_mutation_errors = ResearchEvidence.validate_registration(reason_mutation)
+  unless reason_mutation_errors.any? { |error| error.include?("amendment reason differs") }
+    errors << "registration accepted a changed amendment reason"
+  end
+
   stage_2 = tables["stage-2-observations.csv"]
   if stage_2
     errors << "Stage 2 schema differs between the template checker and evidence validator" unless EXPECTED_HEADERS.fetch("stage-2-observations.csv") == ResearchEvidence::STAGE_2_HEADERS
@@ -299,6 +313,25 @@ begin
       exact_version: exact_version
     )
     errors << "Stage 3 understated cumulative-active mutation was accepted" if cumulative_active_errors.empty?
+
+    unbacked_three_card_users_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "active_users_with_three_cards" => "1",
+        "authored_cards" => "0"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 qualifying-user numerator without three authored cards was accepted" if unbacked_three_card_users_errors.empty?
+
+    missing_authored_cards_errors = ResearchEvidence.validate_stage3_table(
+      build_row.call(
+        exact_version,
+        "active_users_with_three_cards" => "1"
+      ),
+      exact_version: exact_version
+    )
+    errors << "Stage 3 qualifying-user numerator without an authored-card count was accepted" if missing_authored_cards_errors.empty?
 
     complete_rows = (1..5).flat_map do |repository_number|
       (1..4).map do |week|

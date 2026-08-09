@@ -137,6 +137,10 @@ non-overlapping, and no earlier than the registered eligibility date.
 `cumulative_unique_active_users` and `cumulative_unique_active_reusers` are
 deduplicated repository-level counts through that week; use week-four values
 and never sum cumulative values across weeks.
+`active_users_with_three_cards` counts only weekly active users who authored at
+least three of that same row's cards, so `authored_cards` must be at least three
+times that numerator. A positive numerator without enough authored cards makes
+the row invalid.
 
 The 30% reuse denominator is deduplicated across repositories in the separate
 access-controlled `stage-3-active-user-reuse.csv`. Record one row per

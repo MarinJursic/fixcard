@@ -74,6 +74,11 @@ the resulting aggregates. Capture one observed timing for every lookup and
 every authored card; a missing selected timing blocks completion and is never
 reconstructed.
 
+Count a weekly active user in `active_users_with_three_cards` only after that
+user authored at least three cards represented in the same repository-week
+row. The row's `authored_cards` total must therefore be at least three times
+that numerator.
+
 “Relevant” means the first strong result was the correct recorded response for
 the actual incident. A plausible but wrong result is irrelevant. No strong
 result is often the safe and correct outcome.
