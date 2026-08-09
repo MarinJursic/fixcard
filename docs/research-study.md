@@ -59,7 +59,8 @@ Measure:
 Stage 2 passes only when median creation is at most 30 seconds, at least 70% of
 controlled recurrences return the correct card first, at least 60% of
 participants prefer its trustworthiness, and at least five maintainers accept
-committed cards after reviewing real examples.
+committed cards after reviewing real examples. An approval that is never
+committed does not count toward the maintainer gate.
 
 ## Public aggregate report
 

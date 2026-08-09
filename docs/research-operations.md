@@ -106,12 +106,16 @@ blank only when the card was not reviewed. Record `fixcard_version` on every
 row; blank, mixed, and superseded builds are ineligible. The
 `correct_rank_one` value is a count no greater than `controlled_variants`.
 Semicolon-separated timing samples compare Fixcard with the participant's
-normal search route. Record whether metadata caused confusion, plus only counts
-of privacy edits and scanner false positives—never the removed text.
+normal search route. Record `metadata_confusion_observed` as `true`, `false`,
+or blank when it was not observed; never enter free text. Record only counts of
+privacy edits and scanner false positives—never the removed text.
 Use `fixcard`, `normal_search`, or `no_preference` for one consistent
 `trust_preferred` response per participant; leave it blank when unanswered. Use
 `accepted`, `changes_requested`, `rejected`, or `not_reviewed` for
-`maintainer_decision`.
+`maintainer_decision`. Record `card_committed` as `true` only when an accepted
+card was actually committed after normal review; use `false` otherwise. Only a
+row with `maintainer_decision=accepted` and `card_committed=true` can support
+the distinct-maintainer acceptance gate.
 
 Report the median across observed card-creation durations, rank-one precision
 as correct variants divided by all controlled variants, comparative trust once
