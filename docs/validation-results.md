@@ -1,12 +1,21 @@
 # Validation results
 
-Last assessed: 2026-08-04.
+Last assessed: 2026-08-05.
 
 ## Decision
 
-**Insufficient evidence — remain on `1.0.0-rc.5`.** Engineering verification is
-green, but no eligible primary-research or dogfood report has been submitted.
-Missing evidence is not treated as a zero, a pass, or a reconstructed estimate.
+**Insufficient evidence — keep stable 1.0 unreleased.** The exact Stage 3
+treatment remains `1.0.0-rc.4`. Newer candidates are engineering builds and do
+not replace RC4 because no qualifying security-fix restart was invoked. No
+eligible primary-research or dogfood report has been submitted. Missing
+evidence is not treated as a zero, a pass, or a reconstructed estimate.
+
+The machine-readable
+[`pilot-registration.json`](../research/pilot-registration.json) is a pre-data
+registration that freezes `1.0.0-rc.4`, commit
+`acf0c07944700085d56f50a02b26bbdf2525272d`, six archive digests, an eligible
+start date of 2026-08-10, all fixed gates, and all ten kill criteria. It records
+zero eligible evidence at registration and carries nothing across builds.
 
 ## Evidence ledger
 
@@ -15,7 +24,7 @@ Missing evidence is not treated as a zero, a pass, or a reconstructed estimate.
 | Evidence corpus | At least 100 sanitized real failure/resolution pairs with permission and second-person review | None submitted | Not started / not documented |
 | Problem diary | 24–30 developers across the specified contexts, roles, and platforms for two working weeks | None submitted | Not started / not documented |
 | Concierge workflow | Three real cards per participant plus controlled recurrences and maintainer review | None submitted | Not started / not documented |
-| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.5` published 2026-08-04; no eligible report issues submitted | Not started / insufficient |
+| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.4` published 2026-08-04 and registered before eligible collection; no eligible report issues submitted | Not started / insufficient |
 
 All product thresholds therefore remain unproven, including recurrence
 frequency, concierge creation time, seeded retrieval precision, comparative
@@ -24,24 +33,27 @@ privacy false-positive burden, differentiation, and maintenance burden.
 
 ## Verified engineering baseline
 
-Release candidate `1.0.0-rc.5` at commit
-[`c0b3bc2b`](https://github.com/MarinJursic/fixcard/commit/c0b3bc2bcf594ab78d35356f88a0e9348923f522)
-passes 83 repository tests, hosted Linux/macOS/Windows checks, Rust 1.85
-compatibility, dependency and policy audits, documentation and research-form
-validation, and performance gates.
+The latest engineering candidate, `1.0.0-rc.6` at commit
+[`6a10e055`](https://github.com/MarinJursic/fixcard/commit/6a10e0556576a80e481a2ca362544f81bd05977f)
+passes 84 repository tests, hosted Linux/macOS/Windows checks, Rust 1.85
+compatibility, dependency and policy audits, documentation and performance
+gates. It is not eligible RC4 pilot evidence. The exact post-merge commit passed
+[CI](https://github.com/MarinJursic/fixcard/actions/runs/30984540106) and
+[security](https://github.com/MarinJursic/fixcard/actions/runs/30984540104).
 
-The [release workflow](https://github.com/MarinJursic/fixcard/actions/runs/30936161557)
+The [release workflow](https://github.com/MarinJursic/fixcard/actions/runs/30984877313)
 produced six native archives. Every archive contains the `fix` and `fixcard`
 binaries and passed a post-packaging sibling-delegation smoke test. The
-[prerelease](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.5)
+[prerelease](https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.6)
 also includes SHA-256 checksums, a CycloneDX SBOM, SLSA build-provenance
 attestations, and SBOM attestations.
 
 The Apple Silicon archive was independently downloaded and verified with the
-published checksum (`6e8a4147def87a8bad34d7e276dd5926b58366767e73314c2da89d2a38fbdcaa`).
-Both packaged binaries reported `1.0.0-rc.5`, `fix` successfully delegated to
+published checksum (`faec6a30e09b03bed3912085f0279a5162f7c72e2f2fdc3984ee59f402506133`).
+Both packaged binaries reported `1.0.0-rc.6`, `fix` successfully delegated to
 its packaged sibling, and `gh attestation verify` resolved the archive to the
-tagged commit and release workflow.
+tagged commit and release workflow for both SLSA provenance and CycloneDX SBOM
+predicates.
 
 Bare installed `fix` now enters a one-shot hidden paste flow on a terminal,
 while piped input remains a lookup and arguments remain direct argv capture.
@@ -51,18 +63,29 @@ exercise redirected and split prompts, 20 startup-signal timings, active-input
 SIGTERM restoration, and installed-`fix` process replacement.
 
 The Homebrew formula at commit
-[`b85b699`](https://github.com/MarinJursic/homebrew-tap/commit/b85b6991941e6fa24f36db192a9e9e10c3aa3991)
+[`4540692`](https://github.com/MarinJursic/homebrew-tap/commit/4540692a35180a8efa353c2cd8cadc46fc019750)
 passed [post-merge audit, install, formula tests, and both-binary sibling smoke
-checks](https://github.com/MarinJursic/homebrew-tap/actions/runs/30937327259)
+checks](https://github.com/MarinJursic/homebrew-tap/actions/runs/30985670860)
 on x86_64/ARM Linux and Intel/Apple Silicon macOS. A clean installation from
 the public tap was then repeated on Apple Silicon. These results prove the
 implementation and distribution baseline; they do not prove product behavior.
+
+The research-kit checker accepts exact RC4 Stage 2 and Stage 3 rows and
+deliberately mutates them to prove that RC3 and blank versions are rejected.
+The standalone validator also rejects malformed input, observations before the
+eligible date, missing complete-pilot fields, selective timing samples,
+impossible partial totals, duplicate repository-weeks, decreasing cumulative
+active-user or reuse counts, incomplete four-week coverage, and repository
+counts outside 5–8. These controls prevent evidence mixing; they do not turn
+adverse observations into a pass.
 
 ## Reporting
 
 Follow the [research operations guide](research-operations.md), the
 [pre-pilot protocol](research-study.md), and the
 [four-week dogfood protocol](dogfood.md). Submit Stage 3 results through the
-[sanitized validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+[sanitized cross-repository validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+Repository-week and participant-level records remain access-controlled; only
+small-cell-suppressed aggregate results may be submitted publicly.
 The umbrella tracker is
 [issue #5](https://github.com/MarinJursic/fixcard/issues/5).

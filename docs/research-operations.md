@@ -17,6 +17,12 @@ to an access-controlled location and record:
 - the pass, change, stop, and kill criteria without weakening them later;
 - who may inspect participant-controlled raw notes and when they are destroyed.
 
+The current Stage 3 registration is machine-readable in
+[`research/pilot-registration.json`](../research/pilot-registration.json). It
+freezes the exact tag, commit, archive digests, eligible start date, denominators,
+thresholds, and all ten kill criteria before observations begin. A prose issue
+or release announcement cannot override that file.
+
 Participant aliases use `P001`, `P002`, and so on. Repository aliases use
 `R001`, `R002`, and so on. Context aliases such as `PB01` describe a team or
 working context without naming it. Keep the alias key separate from study data.
@@ -49,8 +55,8 @@ row per recruited participant into `stage-1-participants.csv`:
 
 - `recruitment_context`: `product_backend`, `platform_infrastructure`,
   `data_ml`, or `open_source`;
-- `role_band`: the preregistered broad band, never a uniquely identifying job
-  title;
+- `role_band`: `junior`, `mid`, `senior`, or `staff`, never a uniquely
+  identifying job title;
 - `platform`: `macos`, `linux`, `windows`, or preregistered `mixed`;
 - `qualifying_failures`: failures observed above the five-minute threshold;
 - `reusable_failures`: qualifying resolutions judged plausibly useful later;
@@ -62,6 +68,12 @@ The Stage 1 denominator is everyone recruited, not only completers. Report
 attrition separately. Stage 1 passes only when at least one third of recruited
 participants record two or more plausible reusable failures and the required
 coverage was actually recruited.
+
+For coverage, count distinct `context_alias` values and require at least five
+`product_backend`, three `platform_infrastructure`, and three `data_ml`
+contexts, plus at least three `open_source` participants. Recruit at least one
+participant in every role band and at least one macOS, Linux, and Windows user;
+`mixed` does not substitute for a missing named platform.
 
 ## 4. Create the Milestone 0 evidence corpus
 
@@ -88,19 +100,28 @@ three cards from real prior failures. Time creation after the resolution is
 already known. Prepare controlled recurrence variants by changing incidental
 paths, line numbers, or versions without changing the cause.
 
-Record one row per real card in `stage-2-observations.csv`. The
+Record one row per real card in `stage-2-observations.csv`. Use a stable
+non-identifying `maintainer_alias` such as `M001` for the reviewer; leave it
+blank only when the card was not reviewed. Record `fixcard_version` on every
+row; blank, mixed, and superseded builds are ineligible. The
 `correct_rank_one` value is a count no greater than `controlled_variants`.
 Semicolon-separated timing samples compare Fixcard with the participant's
-normal search route. Record whether metadata caused confusion, plus only counts
-of privacy edits and scanner false positives—never the removed text.
-Record one consistent `trust_preferred` response per participant and use
+normal search route. Record `metadata_confusion_observed` as `true`, `false`,
+or blank when it was not observed; never enter free text. Record only counts of
+privacy edits and scanner false positives—never the removed text.
+Use `fixcard`, `normal_search`, or `no_preference` for one consistent
+`trust_preferred` response per participant; leave it blank when unanswered. Use
 `accepted`, `changes_requested`, `rejected`, or `not_reviewed` for
-`maintainer_decision`.
+`maintainer_decision`. Record `card_committed` as `true` only when an accepted
+card was actually committed after normal review; use `false` otherwise. Only a
+row with `maintainer_decision=accepted` and `card_committed=true` can support
+the distinct-maintainer acceptance gate.
 
 Report the median across observed card-creation durations, rank-one precision
 as correct variants divided by all controlled variants, comparative trust once
-per responding participant, and accepted cards only after normal maintainer
-review. Missing timings or responses stay missing.
+per responding participant, and the number of distinct maintainers with at
+least one accepted committed card after normal review. Stage 2 needs at least
+five such maintainers. Missing timings or responses stay missing.
 
 ## 6. Run Stage 3 on one exact build
 
@@ -109,19 +130,72 @@ working weeks. Follow the [dogfood protocol](dogfood.md). Enter one aggregate
 row per anonymous repository and week in `stage-3-repository-weeks.csv`.
 
 Timing sample fields contain semicolon-separated observed numeric durations,
-not estimates. `full_lookups_under_ten_seconds`, `fixcard_used_first`, and
-`other_tool_used_first` are counts no greater than `lookup_attempts`.
+not estimates. Complete evidence contains exactly one end-to-end timing per
+lookup and one capture timing per authored card; there is no discretionary
+subsampling. `full_lookups_under_ten_seconds`, `fixcard_used_first`, and
+`other_tool_used_first` are counts derived from those same lookups.
 `correct_abstentions` and `incorrect_abstentions` describe lookups without a
-strong result. `cumulative_unique_active_reusers` is the deduplicated number
-through that week; use the week-four value and never sum it across weeks.
+strong result. `observation_start` and `observation_end` define a seven-day
+reporting period; four periods per repository must be consecutive,
+non-overlapping, and no earlier than the registered eligibility date.
+`cumulative_unique_active_users` and `cumulative_unique_active_reusers` are
+deduplicated repository-level counts through that week; use week-four values
+and never sum cumulative values across weeks.
+`active_users_with_three_cards` counts only weekly active users who authored at
+least three of that same row's cards, so `authored_cards` must be at least three
+times that numerator. A positive numerator without enough authored cards makes
+the row invalid.
+
+The 30% reuse denominator is deduplicated across repositories in the separate
+access-controlled `stage-3-active-user-reuse.csv`. Record one row per
+participant/repository membership, use the same global participant alias across
+repositories, and keep the identity key separate from study data. For every
+repository, active and reuser membership rows must equal its week-four
+cumulative counts. Deduplicate participant aliases across those reconciled
+rows for the global denominator and numerator.
+
+The eight-week kill-criterion denominator is represented separately in
+`stage-3-eight-week-card-reuse.csv`: one anonymous row for every card authored
+during weeks 1–4, whether it became available to teammates, and whether another
+person reused it by the end of that repository's week-eight follow-up. The
+fixed rate is unique available cards reused by another person divided by all
+cards available to teammates; do not count reuse events or exclude unused
+eligible cards. Each repository's row count must equal the sum of its weekly
+`authored_cards`; omitting an unreused card makes the evidence incomplete.
 Record differentiation responses and maintenance burden in the final week
 unless the protocol preregisters more frequent collection. A serious trust
 incident, unsafe-certainty incident, or missed real secret is reported
 immediately and cannot be averaged away by more activity.
 
+`users_bypassing_scanner_due_false_positives` is a deduplicated weekly user
+count. Any nonzero count fails the privacy gate; a frustrating false positive
+must not be hidden merely because it did not expose a secret.
+
 Do not switch builds mid-pilot. If a security fix requires a new build, stop,
 document the interruption, and preregister whether the affected observation
 period must restart.
+
+Before aggregation, validate the access-controlled Stage 3 CSV with:
+
+```sh
+ruby scripts/research_evidence.rb --complete-pilot \
+  --active-user-reuse /private/stage-3-active-user-reuse.csv \
+  --eight-week-card-reuse /private/stage-3-eight-week-card-reuse.csv \
+  /private/stage-3-repository-weeks.csv
+```
+
+The command requires Ruby 3.1 or newer and a full Git clone containing the
+registered protocol commit and exact release tag. It is intentionally
+fail-closed for blank or nonregistered versions, periods before eligibility,
+selectively missing timings, missing gate fields, duplicate repository-weeks,
+impossible count relationships, incomplete weeks, and repository coverage
+outside 5–8. Do not edit the validator or registration after seeing results to
+make a report pass.
+
+In the CSV, encode maintenance burden as `acceptable`, `unacceptable`, or
+`too_early_to_judge`. Semicolon-delimited timing samples must be the observed
+non-negative values; their counts cannot exceed the corresponding lookup or
+authored-card counts.
 
 ## 7. Use fixed denominators
 
@@ -133,9 +207,11 @@ Calculate and publish:
 | Stage 2 precision | Correct rank-one controlled variants | All observed controlled variants |
 | Stage 2 trust | Participants preferring Fixcard's trustworthiness | Participants answering the comparison once |
 | Stage 3 relevance | Relevant strong rank-one matches | All displayed strong rank-one matches |
+| Stage 3 full-flow speed | Observed end-to-end lookups below 10 seconds | All observed end-to-end lookup timings |
 | Stage 3 capture behavior | Weekly active users creating at least three cards | Weekly active users for the same repository-weeks |
-| Stage 3 reuse | Unique active users who reused a card or had a teammate reuse one | Unique active pilot users over four weeks |
+| Stage 3 reuse | Globally deduplicated active pilot users who reused a card or had a teammate reuse one | Globally deduplicated pilot users active at least once in weeks 1–4 |
 | Differentiation | Pilot users who distinguish Fixcard from alternatives | Pilot users answering the differentiation question |
+| Maintenance | Repositories reporting acceptable burden in week four | Repositories answering the week-four maintenance question |
 
 For creation and capture medians, publish the number of observed durations.
 For lookup performance, report tool-search measurements separately from the
@@ -162,6 +238,14 @@ focused iteration:
 Do not reinterpret a triggered criterion as success. Record a `change` or
 `stop` decision and the focused iteration, if any, before collecting more data.
 
+Criterion 5 cannot be classified at week four. Continue access-controlled
+follow-up for another four weeks and report the fraction of cards available to
+teammates that were reused by another person by the end of week eight. Stable
+promotion waits for that classification. Any triggered kill criterion
+overrides otherwise passing metric gates; in particular, strong-match
+relevance must be at least 80% so the relevance gate cannot pass while the
+greater-than-20% false-positive stop condition is triggered.
+
 ## 9. Publish an auditable aggregate report
 
 Use [`aggregate-report.md`](../research/templates/aggregate-report.md). Publish
@@ -174,6 +258,8 @@ release candidate with missing participant evidence remains a prerelease.
 
 Submit the Stage 1 and 2 aggregate report as a pull request that updates
 [Validation results](validation-results.md) and links its public methodology.
-Submit Stage 3 repository-week aggregates through the
+Keep Stage 3 repository-week and participant-level aggregates access-controlled.
+After week eight, submit only one sanitized cross-repository summary through the
 [validation report form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml),
-then use the same protected pull-request path for the final decision.
+suppressing every cell smaller than five, then use the protected pull-request
+path for the final decision.

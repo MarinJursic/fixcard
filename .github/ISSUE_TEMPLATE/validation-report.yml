@@ -1,127 +1,154 @@
-name: Release-candidate validation report
-description: Submit aggregated, sanitized Fixcard dogfood evidence without raw logs.
-title: "[validation]: "
+name: Sanitized cross-repository validation summary
+description: Submit one coordinator-reviewed aggregate after the full RC4 study; never submit repository-week rows.
+title: "[validation]: RC4 cross-repository summary"
 labels: [validation]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for testing Fixcard. Report only aggregated, sanitized metadata. Do not paste raw logs, credentials, private paths, internal hostnames, customer data, proprietary repository content, or the real repository name. Missing observations must stay missing rather than being estimated later.
+        This public form is for one final, sanitized summary across the full pilot. Keep completed CSVs, participant rows, repository-week rows, alias keys, and incident details access-controlled. Suppress every public cell smaller than five as `<5`; report suspected security details only through private vulnerability reporting.
 
   - type: checkboxes
     id: privacy
     attributes:
-      label: Privacy and evidence confirmation
+      label: Coordinator, privacy, and evidence confirmation
       options:
-        - label: I removed raw failure text and identifying repository information.
+        - label: I am submitting a coordinator-reviewed aggregate across at least five eligible repositories, not a repository-week report.
           required: true
-        - label: This report contains no credentials, customer data, or proprietary content.
+        - label: I removed repository and participant aliases, raw failure text, commands, paths, credentials, customer data, and proprietary content.
           required: true
-        - label: These are real-work observations, not synthetic incidents or reconstructed guesses.
+        - label: Every public cell smaller than five is shown only as `<5`, and small cells cannot be reconstructed from other values here.
+          required: true
+        - label: These are permissioned real-work observations; no synthetic, inferred, reconstructed, or estimated evidence is included.
+          required: true
+
+  - type: dropdown
+    id: exact_pilot_build
+    attributes:
+      label: Exact registered pilot build
+      description: Reports from any other build are ineligible and cannot be carried forward.
+      options:
+        - 1.0.0-rc.4
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: protocol_confirmation
+    attributes:
+      label: Protocol confirmation
+      options:
+        - label: Every Stage 2 and Stage 3 row records `1.0.0-rc.4`, and both `fixcard --version` and `fix --version` were rechecked at the start of every weekly period.
+          required: true
+        - label: Stage 3 began on or after 2026-08-10 and used four consecutive, non-overlapping seven-day periods in 5–8 active repositories.
+          required: true
+        - label: The access-controlled Stage 3 files passed the registered complete-pilot validator without editing the registration or validator after data collection.
+          required: true
+        - label: The additional four-week teammate-reuse follow-up is complete, so all ten kill criteria are measurable or explicitly reported missing.
           required: true
 
   - type: textarea
-    id: study_context
+    id: registration_and_coverage
     attributes:
-      label: Study context
-      description: Use the same random, non-identifying repository alias every week. Obtain the version from `fixcard --version`.
+      label: Registration, coverage, and attrition
+      description: Link the protected evidence-ledger pull request. Use only cross-repository aggregates and `<5` suppression.
       value: |
-        Anonymous repository alias:
-        Fixcard version:
-        Report sequence (for example, week 1 of 4):
-        Observation period (YYYY-MM-DD through YYYY-MM-DD):
-        Repository kind (public OSS / private work / private personal / mixed):
-        Primary ecosystem:
-        Pilot users with access to this repository:
-        Weekly active pilot users:
+        Protocol commit:
+        Evidence-ledger pull request:
+        Four-week observation period:
+        Eight-week follow-up end date:
+        Eligible repositories:
+        Ecosystem coverage:
+        Globally deduplicated pilot users:
+        Globally deduplicated users active in weeks 1–4:
+        Missing data and attrition:
     validations:
       required: true
 
   - type: textarea
-    id: retrieval_counts
+    id: milestone_stage_1_2
     attributes:
-      label: Retrieval and workflow counts
-      description: Count a strong result as relevant only when it was the correct first response for the real incident. List observed end-to-end lookup durations as comma-separated seconds.
+      label: Milestone 0, Stage 1, and Stage 2 aggregates
+      description: Preserve the registered denominators and report missing values as missing.
       value: |
-        Lookups attempted:
-        Strong rank-one results:
-        Relevant strong results:
-        Irrelevant strong results:
-        Correct abstentions / no strong result:
-        Incorrect abstentions where a suitable card existed:
-        End-to-end lookup durations in seconds:
-        Incidents where Fixcard was used before browser, chat, or AI:
-        Incidents where browser, chat, or AI was used first:
+        Permissioned and second-person-reviewed real pairs / 100 minimum:
+        Stage 1 recruited participants / 24–30:
+        Stage 1 two-week diary completers / all recruited:
+        Participants with at least two reusable failures / all recruited:
+        Stage 1 coverage quotas:
+        Stage 2 real cards / participants:
+        Median creation seconds / observed durations:
+        Correct rank-one variants / all controlled variants:
+        Participants preferring Fixcard / participants answering once:
+        Distinct maintainers accepting committed cards:
     validations:
       required: true
 
   - type: textarea
-    id: capture_reuse_counts
+    id: stage_3_gates
     attributes:
-      label: Capture, review, reuse, and retirement
-      description: Authoring durations begin after the resolution is already known. Use comma-separated observed seconds; do not estimate missing measurements.
+      label: Stage 3 gate aggregates
+      description: Do not publish raw timing samples or repository-level values. A triggered kill criterion overrides otherwise passing gates.
       value: |
-        Cards authored:
-        Authoring durations in seconds:
-        Weekly active users who authored at least three cards:
-        Reuses by original author:
-        Reuses by another person:
-        Shared cards submitted for normal pull-request review:
-        Shared cards accepted through normal pull-request review:
-        Shared cards changed or rejected during review:
-        Cards retired or replaced:
+        Relevant strong rank-one matches / all strong rank-one matches:
+        Search p95 milliseconds / measured searches:
+        Full lookups below 10 seconds / all eligible lookup timings:
+        Median capture seconds / all eligible capture timings:
+        Weekly active users creating at least three cards / weekly active users:
+        Globally deduplicated active reusers / globally deduplicated active users:
+        Shared cards accepted / submitted, and repositories represented:
+        Users distinguishing Fixcard / users answering once:
+        Repositories reporting acceptable burden / week-four responses:
     validations:
       required: true
 
   - type: textarea
-    id: trust_privacy_counts
+    id: safety
     attributes:
-      label: Trust and privacy counts
-      description: Report suspected security details privately. Public counts must contain no secret values, raw logs, commands, paths, or internal names.
+      label: Cross-repository safety summary
+      description: Use `0` or `>0 — details reported privately` for sensitive small counts. Never describe an incident here.
       value: |
-        Secret-scanner catches before save:
+        Serious trust or unsafe-certainty incidents:
+        Missed real secrets:
+        Users bypassing scanning because of false positives:
+        Secret-scanner catches:
         Secret-scanner false positives:
-        Real secrets found after save:
-        Misleading-certainty incidents:
-        Unsafe-action incidents:
-        Users asked to explain how Fixcard differs from history, Atuin, Recall, Navi, or a README:
-        Users who could explain a meaningful difference:
-    validations:
-      required: true
-
-  - type: dropdown
-    id: serious_incident
-    attributes:
-      label: Serious secret exposure, misleading-certainty, or unsafe-action incident
-      options:
-        - "No"
-        - "Yes — I will report details privately"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: maintenance_burden
-    attributes:
-      label: Maintenance burden for this repository
-      options:
-        - Acceptable
-        - Unacceptable
-        - Too early to judge
     validations:
       required: true
 
   - type: textarea
-    id: friction
+    id: kill_criteria
     attributes:
-      label: Most important friction or surprise
-      description: Describe workflow friction without including repository-private text. Include scanner false-positive burden when relevant.
+      label: All ten kill criteria
+      description: For each frozen criterion, write pass, triggered, missing, or not measurable. Do not weaken a threshold after seeing results.
+      value: |
+        1. More than 80% create no card:
+        2. Median creation above 30 seconds:
+        3. Strong-match false positives above 20%:
+        4. Most prefer ordinary history or another tool:
+        5. Fewer than 10% of cards reused by another person over eight weeks:
+        6. Teams refuse committed cards:
+        7. Secret redaction is unreliable:
+        8. Cards become stale faster than used:
+        9. Automatic terminal capture is required:
+        10. Adoption depends on AI, cloud sync, or replay:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Predeclared decision
+      options:
+        - Go — every gate passed and no kill criterion triggered
+        - Change — at least one gate failed, evidence is missing, or a kill criterion triggered
+        - Stop — evidence supports stopping the current product direction
     validations:
       required: true
 
   - type: textarea
-    id: value_and_difference
+    id: limitations
     attributes:
-      label: Concrete value and differentiation observed
-      description: What became faster or safer, and why was this not adequately served by history, Atuin, Recall, Navi, or repository documentation? A report that Fixcard provided no distinct value is equally useful.
+      label: Limitations, deviations, and conflicts
+      description: Include sampling limits, missing data, deviations, coordinator conflicts, and any focused iteration without revealing private context.
     validations:
       required: true
