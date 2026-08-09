@@ -3,7 +3,7 @@
   "status": "pre_data_registration",
   "registered_on": "2026-08-05",
   "protocol": {
-    "commit": "cea057ffb6d3570e5f4ad2557db3342b4ddb2323",
+    "commit": "64dede128d7f7fa56379baa488f5ba542fac3328",
     "documents": [
       "docs/research-study.md",
       "docs/research-operations.md",
