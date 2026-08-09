@@ -181,6 +181,8 @@ module ResearchEvidence
   ].freeze
 
   MAINTENANCE_VALUES = ["acceptable", "unacceptable", "too_early_to_judge"].freeze
+  STAGE_2_TRUST_VALUES = %w[fixcard normal_search no_preference].freeze
+  STAGE_2_MAINTAINER_DECISIONS = %w[accepted changes_requested rejected not_reviewed].freeze
 
   module_function
 
@@ -328,6 +330,7 @@ module ResearchEvidence
     errors = []
     errors << "Stage 2 CSV: headers differ from the registered schema" unless table.headers == STAGE_2_HEADERS
     seen_cards = {}
+    trust_by_participant = {}
 
     table.each_with_index do |row, index|
       line = index + 2
@@ -348,12 +351,49 @@ module ResearchEvidence
       end
       variants = integer(row["controlled_variants"])
       correct = integer(row["correct_rank_one"])
-      if row["correct_rank_one"].to_s.empty? != row["controlled_variants"].to_s.empty?
-        errors << "line #{line}: controlled_variants and correct_rank_one must be reported together"
+      if row["correct_rank_one"].to_s.empty? || row["controlled_variants"].to_s.empty?
+        errors << "line #{line}: controlled_variants and correct_rank_one are required together"
       end
       errors << "line #{line}: correct_rank_one cannot exceed controlled_variants" if variants && correct && correct > variants
       unless row["creation_seconds"].to_s.empty? || (numeric?(row["creation_seconds"]) && row["creation_seconds"].to_f >= 0)
         errors << "line #{line}: creation_seconds must be a non-negative number or blank"
+      end
+
+      timing_counts = {}
+      %w[fixcard_lookup_seconds_samples normal_search_seconds_samples].each do |field|
+        next if row[field].to_s.empty?
+
+        samples = row[field].split(";", -1)
+        valid = samples.all? { |sample| numeric?(sample) && sample.to_f >= 0 }
+        errors << "line #{line}: #{field} must be semicolon-separated non-negative numbers" unless valid
+        timing_counts[field] = samples.length if valid
+      end
+      if timing_counts.length == 1
+        errors << "line #{line}: Fixcard and normal-search timing samples must be reported together"
+      elsif timing_counts.length == 2 && timing_counts.values.uniq.length != 1
+        errors << "line #{line}: Fixcard and normal-search timing samples must have equal counts"
+      end
+
+      trust = row["trust_preferred"].to_s
+      unless trust.empty?
+        errors << "line #{line}: trust_preferred must be one of #{STAGE_2_TRUST_VALUES.join(', ')}" unless STAGE_2_TRUST_VALUES.include?(trust)
+        previous_trust = trust_by_participant[participant]
+        if previous_trust && previous_trust != trust
+          errors << "line #{line}: trust_preferred conflicts with this participant's earlier response"
+        elsif STAGE_2_TRUST_VALUES.include?(trust)
+          trust_by_participant[participant] = trust
+        end
+      end
+
+      maintainer = row["maintainer_alias"].to_s
+      decision = row["maintainer_decision"].to_s
+      unless STAGE_2_MAINTAINER_DECISIONS.include?(decision)
+        errors << "line #{line}: maintainer_decision must be one of #{STAGE_2_MAINTAINER_DECISIONS.join(', ')}"
+      end
+      if %w[accepted changes_requested rejected].include?(decision)
+        errors << "line #{line}: reviewed cards require a maintainer_alias like M001" unless maintainer.match?(/\AM\d{3,}\z/)
+      elsif decision == "not_reviewed" && !maintainer.empty?
+        errors << "line #{line}: not_reviewed cards must not name a maintainer_alias"
       end
     end
     errors

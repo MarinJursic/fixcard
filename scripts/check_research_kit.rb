@@ -151,7 +151,14 @@ begin
     stage_2_headers = EXPECTED_HEADERS.fetch("stage-2-observations.csv")
     stage_2_row = lambda do |version|
       values = stage_2_headers.map do |header|
-        {"participant_alias" => "P001", "card_alias" => "C001", "fixcard_version" => version}.fetch(header, "")
+        {
+          "participant_alias" => "P001",
+          "card_alias" => "C001",
+          "fixcard_version" => version,
+          "controlled_variants" => "0",
+          "correct_rank_one" => "0",
+          "maintainer_decision" => "not_reviewed"
+        }.fetch(header, "")
       end
       CSV::Table.new([CSV::Row.new(stage_2_headers, values)])
     end
@@ -162,6 +169,7 @@ begin
     errors << "Stage 2 blank-build mutation was accepted" if ResearchEvidence.validate_stage2_table(stage_2_row.call(""), exact_version: exact_version).empty?
 
     missing_variant_denominator = stage_2_row.call(exact_version)
+    missing_variant_denominator.first["controlled_variants"] = ""
     missing_variant_denominator.first["correct_rank_one"] = "100"
     if ResearchEvidence.validate_stage2_table(missing_variant_denominator, exact_version: exact_version).empty?
       errors << "Stage 2 rank-one numerator without controlled-variant denominator was accepted"
@@ -169,9 +177,47 @@ begin
 
     missing_rank_one_numerator = stage_2_row.call(exact_version)
     missing_rank_one_numerator.first["controlled_variants"] = "100"
+    missing_rank_one_numerator.first["correct_rank_one"] = ""
     if ResearchEvidence.validate_stage2_table(missing_rank_one_numerator, exact_version: exact_version).empty?
       errors << "Stage 2 controlled-variant denominator without rank-one numerator was accepted"
     end
+
+    invalid_trust = stage_2_row.call(exact_version)
+    invalid_trust.first["trust_preferred"] = "sometimes"
+    errors << "Stage 2 invalid trust response was accepted" if ResearchEvidence.validate_stage2_table(invalid_trust, exact_version: exact_version).empty?
+
+    conflicting_trust_rows = [stage_2_row.call(exact_version).first, stage_2_row.call(exact_version).first.dup]
+    conflicting_trust_rows[0]["trust_preferred"] = "fixcard"
+    conflicting_trust_rows[1]["card_alias"] = "C002"
+    conflicting_trust_rows[1]["trust_preferred"] = "normal_search"
+    conflicting_trust = CSV::Table.new(conflicting_trust_rows)
+    errors << "Stage 2 conflicting participant trust responses were accepted" if ResearchEvidence.validate_stage2_table(conflicting_trust, exact_version: exact_version).empty?
+
+    missing_reviewer = stage_2_row.call(exact_version)
+    missing_reviewer.first["maintainer_decision"] = "accepted"
+    errors << "Stage 2 reviewed card without maintainer alias was accepted" if ResearchEvidence.validate_stage2_table(missing_reviewer, exact_version: exact_version).empty?
+
+    invalid_decision = stage_2_row.call(exact_version)
+    invalid_decision.first["maintainer_decision"] = "maybe"
+    errors << "Stage 2 invalid maintainer decision was accepted" if ResearchEvidence.validate_stage2_table(invalid_decision, exact_version: exact_version).empty?
+
+    unpaired_timings = stage_2_row.call(exact_version)
+    unpaired_timings.first["fixcard_lookup_seconds_samples"] = "1;2"
+    errors << "Stage 2 unpaired lookup timings were accepted" if ResearchEvidence.validate_stage2_table(unpaired_timings, exact_version: exact_version).empty?
+
+    unequal_timings = stage_2_row.call(exact_version)
+    unequal_timings.first["fixcard_lookup_seconds_samples"] = "1;2"
+    unequal_timings.first["normal_search_seconds_samples"] = "3"
+    errors << "Stage 2 unequal lookup timing counts were accepted" if ResearchEvidence.validate_stage2_table(unequal_timings, exact_version: exact_version).empty?
+
+    complete_stage_2_control = stage_2_row.call(exact_version)
+    complete_stage_2_control.first["maintainer_alias"] = "M001"
+    complete_stage_2_control.first["maintainer_decision"] = "accepted"
+    complete_stage_2_control.first["trust_preferred"] = "fixcard"
+    complete_stage_2_control.first["fixcard_lookup_seconds_samples"] = "1;2"
+    complete_stage_2_control.first["normal_search_seconds_samples"] = "3;4"
+    complete_stage_2_errors = ResearchEvidence.validate_stage2_table(complete_stage_2_control, exact_version: exact_version)
+    errors << "Stage 2 complete-row control failed: #{complete_stage_2_errors.join('; ')}" unless complete_stage_2_errors.empty?
   end
 
   active_user_reuse = tables["stage-3-active-user-reuse.csv"]
