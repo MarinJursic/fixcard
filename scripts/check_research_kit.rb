@@ -20,7 +20,7 @@ EXPECTED_HEADERS = {
     participant_alias card_alias maintainer_alias fixcard_version creation_seconds controlled_variants
     correct_rank_one fixcard_lookup_seconds_samples normal_search_seconds_samples
     metadata_confusion_observed privacy_edits scanner_false_positives
-    trust_preferred maintainer_decision
+    trust_preferred maintainer_decision card_committed
   ],
   "stage-3-repository-weeks.csv" => %w[
     repository_alias week observation_start observation_end fixcard_version
@@ -157,7 +157,8 @@ begin
           "fixcard_version" => version,
           "controlled_variants" => "0",
           "correct_rank_one" => "0",
-          "maintainer_decision" => "not_reviewed"
+          "maintainer_decision" => "not_reviewed",
+          "card_committed" => "false"
         }.fetch(header, "")
       end
       CSV::Table.new([CSV::Row.new(stage_2_headers, values)])
@@ -186,6 +187,10 @@ begin
     invalid_trust.first["trust_preferred"] = "sometimes"
     errors << "Stage 2 invalid trust response was accepted" if ResearchEvidence.validate_stage2_table(invalid_trust, exact_version: exact_version).empty?
 
+    invalid_metadata_confusion = stage_2_row.call(exact_version)
+    invalid_metadata_confusion.first["metadata_confusion_observed"] = "maybe"
+    errors << "Stage 2 invalid metadata-confusion value was accepted" if ResearchEvidence.validate_stage2_table(invalid_metadata_confusion, exact_version: exact_version).empty?
+
     conflicting_trust_rows = [stage_2_row.call(exact_version).first, stage_2_row.call(exact_version).first.dup]
     conflicting_trust_rows[0]["trust_preferred"] = "fixcard"
     conflicting_trust_rows[1]["card_alias"] = "C002"
@@ -196,6 +201,14 @@ begin
     missing_reviewer = stage_2_row.call(exact_version)
     missing_reviewer.first["maintainer_decision"] = "accepted"
     errors << "Stage 2 reviewed card without maintainer alias was accepted" if ResearchEvidence.validate_stage2_table(missing_reviewer, exact_version: exact_version).empty?
+
+    missing_committed_state = stage_2_row.call(exact_version)
+    missing_committed_state.first["card_committed"] = ""
+    errors << "Stage 2 row without committed state was accepted" if ResearchEvidence.validate_stage2_table(missing_committed_state, exact_version: exact_version).empty?
+
+    unaccepted_committed_card = stage_2_row.call(exact_version)
+    unaccepted_committed_card.first["card_committed"] = "true"
+    errors << "Stage 2 unaccepted committed card was accepted" if ResearchEvidence.validate_stage2_table(unaccepted_committed_card, exact_version: exact_version).empty?
 
     invalid_decision = stage_2_row.call(exact_version)
     invalid_decision.first["maintainer_decision"] = "maybe"
@@ -213,6 +226,7 @@ begin
     complete_stage_2_control = stage_2_row.call(exact_version)
     complete_stage_2_control.first["maintainer_alias"] = "M001"
     complete_stage_2_control.first["maintainer_decision"] = "accepted"
+    complete_stage_2_control.first["card_committed"] = "true"
     complete_stage_2_control.first["trust_preferred"] = "fixcard"
     complete_stage_2_control.first["fixcard_lookup_seconds_samples"] = "1;2"
     complete_stage_2_control.first["normal_search_seconds_samples"] = "3;4"

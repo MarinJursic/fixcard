@@ -21,7 +21,7 @@ module ResearchEvidence
 
   EXPECTED_PILOT = {
     "registered_on" => "2026-08-05",
-    "protocol_commit" => "64dede128d7f7fa56379baa488f5ba542fac3328",
+    "protocol_commit" => "c513e51501fb878dce67f268cffb36593e6ac88d",
     "amendment_supersedes_version" => "1.0.0-rc.3",
     "amendment_reason" => "RC4 was frozen as the exact Stage 3 treatment before any eligible external observation. Later product and usability builds do not qualify for the security-fix restart exception and are excluded from this pilot.",
     "version" => "1.0.0-rc.4",
@@ -47,7 +47,7 @@ module ResearchEvidence
     creation_seconds controlled_variants correct_rank_one
     fixcard_lookup_seconds_samples normal_search_seconds_samples
     metadata_confusion_observed privacy_edits scanner_false_positives
-    trust_preferred maintainer_decision
+    trust_preferred maintainer_decision card_committed
   ].freeze
 
   STAGE_3_USER_REUSE_HEADERS = %w[
@@ -385,15 +385,25 @@ module ResearchEvidence
         end
       end
 
+      metadata_confusion = row["metadata_confusion_observed"].to_s
+      unless metadata_confusion.empty? || %w[true false].include?(metadata_confusion)
+        errors << "line #{line}: metadata_confusion_observed must be true, false, or blank"
+      end
+
       maintainer = row["maintainer_alias"].to_s
       decision = row["maintainer_decision"].to_s
+      committed = row["card_committed"].to_s
       unless STAGE_2_MAINTAINER_DECISIONS.include?(decision)
         errors << "line #{line}: maintainer_decision must be one of #{STAGE_2_MAINTAINER_DECISIONS.join(', ')}"
       end
+      errors << "line #{line}: card_committed must be true or false" unless %w[true false].include?(committed)
       if %w[accepted changes_requested rejected].include?(decision)
         errors << "line #{line}: reviewed cards require a maintainer_alias like M001" unless maintainer.match?(/\AM\d{3,}\z/)
       elsif decision == "not_reviewed" && !maintainer.empty?
         errors << "line #{line}: not_reviewed cards must not name a maintainer_alias"
+      end
+      if committed == "true" && decision != "accepted"
+        errors << "line #{line}: only an accepted card may be recorded as committed"
       end
     end
     errors
