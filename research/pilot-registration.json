@@ -15,9 +15,7 @@
       "research/templates/stage-3-active-user-reuse.csv",
       "research/templates/stage-3-eight-week-card-reuse.csv",
       "research/templates/aggregate-report.md",
-      ".github/ISSUE_TEMPLATE/validation-report.yml",
-      "scripts/research_evidence.rb",
-      "scripts/check_research_kit.rb"
+      ".github/ISSUE_TEMPLATE/validation-report.yml"
     ],
     "raw_data_location": "access_controlled_outside_public_repository",
     "public_data_policy": "sanitized_cross_repository_aggregates_with_small_cell_suppression"

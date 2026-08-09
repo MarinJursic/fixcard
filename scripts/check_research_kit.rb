@@ -137,6 +137,13 @@ begin
     errors << "registration accepted a changed amendment reason"
   end
 
+  protocol_commit_mutation = JSON.parse(JSON.generate(registration))
+  protocol_commit_mutation["protocol"]["commit"] = "0" * 40
+  protocol_commit_mutation_errors = ResearchEvidence.validate_registration(protocol_commit_mutation)
+  unless protocol_commit_mutation_errors.any? { |error| error.include?("protocol commit differs from the frozen") }
+    errors << "registration accepted a changed protocol commit"
+  end
+
   stage_2 = tables["stage-2-observations.csv"]
   if stage_2
     errors << "Stage 2 schema differs between the template checker and evidence validator" unless EXPECTED_HEADERS.fetch("stage-2-observations.csv") == ResearchEvidence::STAGE_2_HEADERS
@@ -153,6 +160,18 @@ begin
     previous_version = registration.dig("amendment", "supersedes_version")
     errors << "Stage 2 mixed-build mutation was accepted" if ResearchEvidence.validate_stage2_table(stage_2_row.call(previous_version), exact_version: exact_version).empty?
     errors << "Stage 2 blank-build mutation was accepted" if ResearchEvidence.validate_stage2_table(stage_2_row.call(""), exact_version: exact_version).empty?
+
+    missing_variant_denominator = stage_2_row.call(exact_version)
+    missing_variant_denominator.first["correct_rank_one"] = "100"
+    if ResearchEvidence.validate_stage2_table(missing_variant_denominator, exact_version: exact_version).empty?
+      errors << "Stage 2 rank-one numerator without controlled-variant denominator was accepted"
+    end
+
+    missing_rank_one_numerator = stage_2_row.call(exact_version)
+    missing_rank_one_numerator.first["controlled_variants"] = "100"
+    if ResearchEvidence.validate_stage2_table(missing_rank_one_numerator, exact_version: exact_version).empty?
+      errors << "Stage 2 controlled-variant denominator without rank-one numerator was accepted"
+    end
   end
 
   active_user_reuse = tables["stage-3-active-user-reuse.csv"]

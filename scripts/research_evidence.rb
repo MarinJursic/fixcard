@@ -21,6 +21,7 @@ module ResearchEvidence
 
   EXPECTED_PILOT = {
     "registered_on" => "2026-08-05",
+    "protocol_commit" => "64dede128d7f7fa56379baa488f5ba542fac3328",
     "amendment_supersedes_version" => "1.0.0-rc.3",
     "amendment_reason" => "RC4 was frozen as the exact Stage 3 treatment before any eligible external observation. Later product and usability builds do not qualify for the security-fix restart exception and are excluded from this pilot.",
     "version" => "1.0.0-rc.4",
@@ -81,6 +82,9 @@ module ResearchEvidence
     stage_3_repositories stage_3_repository_weeks
   ].freeze
 
+  # The study documents are bound to EXPECTED_PILOT["protocol_commit"]. The
+  # verifier scripts are intentionally outside this set because an executable
+  # cannot contain the hash of the commit that contains itself.
   EXPECTED_PROTOCOL_DOCUMENTS = %w[
     docs/research-study.md docs/research-operations.md docs/validation.md
     docs/dogfood.md research/templates/stage-1-participants.csv
@@ -90,7 +94,6 @@ module ResearchEvidence
     research/templates/stage-3-eight-week-card-reuse.csv
     research/templates/aggregate-report.md
     .github/ISSUE_TEMPLATE/validation-report.yml
-    scripts/research_evidence.rb scripts/check_research_kit.rb
   ].freeze
 
   EXPECTED_FIXED_GATES = {
@@ -218,6 +221,7 @@ module ResearchEvidence
     errors << "registration: exact pilot commit must remain #{expected_commit}" unless registration.dig("pilot", "commit") == expected_commit
     protocol_commit = registration.dig("protocol", "commit").to_s
     errors << "registration: protocol commit must be a full SHA-1" unless protocol_commit.match?(/\A[0-9a-f]{40}\z/)
+    errors << "registration: protocol commit differs from the frozen RC4 protocol snapshot" unless protocol_commit == EXPECTED_PILOT.fetch("protocol_commit")
     errors << "registration: protocol commit must differ from the product build commit" if protocol_commit == expected_commit
     errors << "registration: raw data must remain access-controlled" unless registration.dig("protocol", "raw_data_location") == "access_controlled_outside_public_repository"
     errors << "registration: public data must be sanitized aggregates only" unless registration.dig("protocol", "public_data_policy") == "sanitized_cross_repository_aggregates_with_small_cell_suppression"
@@ -344,6 +348,9 @@ module ResearchEvidence
       end
       variants = integer(row["controlled_variants"])
       correct = integer(row["correct_rank_one"])
+      if row["correct_rank_one"].to_s.empty? != row["controlled_variants"].to_s.empty?
+        errors << "line #{line}: controlled_variants and correct_rank_one must be reported together"
+      end
       errors << "line #{line}: correct_rank_one cannot exceed controlled_variants" if variants && correct && correct > variants
       unless row["creation_seconds"].to_s.empty? || (numeric?(row["creation_seconds"]) && row["creation_seconds"].to_f >= 0)
         errors << "line #{line}: creation_seconds must be a non-negative number or blank"
