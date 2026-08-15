@@ -93,10 +93,14 @@ adverse observations into a pass.
 
 ## Reporting
 
+The public validation intake form is disabled while collection is paused. Do
+not submit RC4 or replacement-build evidence until a protected replacement
+preregistration merges and issue #5 explicitly reopens collection.
+
 Follow the [research operations guide](research-operations.md), the
 [pre-pilot protocol](research-study.md), and the
-[four-week dogfood protocol](dogfood.md). Submit Stage 3 results through the
-[sanitized cross-repository validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+[four-week dogfood protocol](dogfood.md). After an eligible replacement pilot
+is completed, its protected protocol will restore the sanitized intake form.
 Repository-week and participant-level records remain access-controlled; only
 small-cell-suppressed aggregate results may be submitted publicly.
 The umbrella tracker is

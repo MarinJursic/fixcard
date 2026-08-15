@@ -17,9 +17,10 @@ It never generates advice, uploads logs, runs a daemon, or executes text from a
 card. A match is a suggested resolution, not an automatic fix.
 
 > [!IMPORTANT]
-> The production-v1 implementation is being validated as a release candidate.
-> Engineering checks are automated, but the published real-user validation
-> gates are not complete. See [Validation](docs/validation.md).
+> Stage 3 validation is paused under the documented security-fix restart rule;
+> no build is currently eligible for pilot evidence. Engineering checks are
+> automated, but the published real-user validation gates are not complete.
+> See [Validation](docs/validation.md).
 
 ## The shortest path
 
@@ -157,7 +158,7 @@ or newer:
 
 ```bash
 cargo install --git https://github.com/MarinJursic/fixcard \
-  --tag v1.0.0-rc.7 --locked fixcard
+  --tag v1.0.0-rc.6 --locked fixcard
 ```
 
 ## Commands

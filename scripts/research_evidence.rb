@@ -11,6 +11,7 @@ require "pathname"
 module ResearchEvidence
   ROOT = Pathname.new(__dir__).join("..").cleanpath
   REGISTRATION_PATH = ROOT.join("research", "pilot-registration.json")
+  INTERRUPTION_PATH = ROOT.join("research", "pilot-interruption.json")
   STAGE_2_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-2-observations.csv")
   STAGE_3_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-repository-weeks.csv")
   STAGE_3_USER_REUSE_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-active-user-reuse.csv")
@@ -40,6 +41,76 @@ module ResearchEvidence
       "fixcard-1.0.0-rc.4-x86_64-unknown-linux-gnu.tar.gz" => "513b4e0d4ca03def2749c555c8d85e8bf3f3e7d00847f17f3a3c503583b3237f",
       "fixcard-1.0.0-rc.4-x86_64-unknown-linux-musl.tar.gz" => "49cfce7b2d20588694446f1f25a325bd296b525148fb246cd27c92a911bdd139"
     }.freeze
+  }.freeze
+
+  EXPECTED_INTERRUPTION = {
+    "schema_version" => 1,
+    "status" => "collection_paused",
+    "paused_at" => "2026-08-15T11:25:11Z",
+    "source_issue_comment" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5302005971",
+    "interrupted_pilot" => {
+      "version" => "1.0.0-rc.4",
+      "tag" => "v1.0.0-rc.4",
+      "commit" => "acf0c07944700085d56f50a02b26bbdf2525272d"
+    },
+    "restart_rule" => "security_fix_stop_document_and_preregister_restart",
+    "reason_classes" => [
+      "bounded_committed_card_resource_handling",
+      "runtime_risk_classification"
+    ],
+    "eligible_evidence_at_interruption" => {
+      "permissioned_second_reviewed_real_pairs" => 0,
+      "stage_1_recruited_participants" => 0,
+      "stage_1_completed_two_week_diaries" => 0,
+      "stage_2_real_card_observations" => 0,
+      "stage_3_repositories" => 0,
+      "stage_3_repository_weeks" => 0
+    },
+    "carry_forward_eligible_evidence" => false,
+    "eligible_build" => nil,
+    "replacement_registration" => nil,
+    "collection_open" => false,
+    "stable_release_allowed" => false
+  }.freeze
+
+  PAUSE_BANNERS = {
+    "docs/dogfood.md" => <<~MARKDOWN,
+      > [!CAUTION]
+      > **Collection is paused.** No Fixcard build is currently eligible for this
+      > pilot. The RC4 instructions below are the frozen historical treatment and
+      > must not be followed while the pause is active. RC4, RC5, RC6, RC7,
+      > untagged builds, and moving package-manager heads are ineligible. Restart
+      > requires a protected replacement preregistration and a later explicit
+      > opening comment in issue #5; no evidence from the interrupted treatment
+      > carries forward. See the
+      > [interruption record](../research/pilot-interruption.json).
+
+    MARKDOWN
+    "docs/research-operations.md" => <<~MARKDOWN,
+      > [!CAUTION]
+      > **Collection is paused.** The RC4 registration described below is the
+      > immutable historical record of an interrupted treatment, not an active
+      > authorization. No build is currently eligible. Restart requires a protected
+      > replacement preregistration and a later explicit opening comment in issue
+      > #5; no evidence from the interrupted treatment carries forward. See the
+      > [interruption record](../research/pilot-interruption.json).
+
+    MARKDOWN
+    "docs/validation.md" => <<~MARKDOWN
+      > [!CAUTION]
+      > **Stage 3 collection is paused.** No Fixcard build is currently eligible,
+      > and the public validation intake form is disabled. The staged plan below
+      > remains frozen, but observation and submission can restart only after a
+      > protected replacement preregistration and a later explicit opening comment
+      > in issue #5. No evidence from the interrupted RC4 treatment carries forward.
+
+    MARKDOWN
+  }.freeze
+
+  PAUSE_HEADINGS = {
+    "docs/dogfood.md" => "# Release-candidate dogfood program\n\n",
+    "docs/research-operations.md" => "# Research operations guide\n\n",
+    "docs/validation.md" => "# Validation plan\n\n"
   }.freeze
 
   STAGE_2_HEADERS = %w[
@@ -95,6 +166,7 @@ module ResearchEvidence
     research/templates/aggregate-report.md
     .github/ISSUE_TEMPLATE/validation-report.yml
   ].freeze
+  PAUSED_INTAKE_DOCUMENT = ".github/ISSUE_TEMPLATE/validation-report.yml"
 
   EXPECTED_FIXED_GATES = {
     "milestone_0" => {
@@ -201,6 +273,44 @@ module ResearchEvidence
     raise ArgumentError, "invalid registration JSON: #{e.message}"
   end
 
+  def load_interruption(path = INTERRUPTION_PATH)
+    raise ArgumentError, "interruption record exceeds #{MAX_INPUT_BYTES} bytes" if File.size(path) > MAX_INPUT_BYTES
+
+    interruption = JSON.parse(File.read(path, encoding: "UTF-8"))
+    raise ArgumentError, "interruption top level must be an object" unless interruption.is_a?(Hash)
+
+    interruption
+  rescue Errno::ENOENT => e
+    raise ArgumentError, "missing interruption record: #{e.message}"
+  rescue EncodingError => e
+    raise ArgumentError, "invalid interruption record encoding: #{e.message}"
+  rescue JSON::ParserError => e
+    raise ArgumentError, "invalid interruption record JSON: #{e.message}"
+  end
+
+  def validate_interruption(interruption)
+    return ["interruption: top level must be an object"] unless interruption.is_a?(Hash)
+
+    return [] if interruption == EXPECTED_INTERRUPTION
+
+    ["interruption: record differs from the frozen RC4 security-pause record"]
+  end
+
+  def validate_intake_authorization(registration, interruption)
+    return ["evidence intake: collection is paused; no build is currently eligible"] unless interruption["collection_open"] == true
+
+    eligible_build = interruption["eligible_build"]
+    pilot = registration["pilot"]
+    unless eligible_build.is_a?(Hash) && pilot.is_a?(Hash) &&
+           %w[version tag commit].all? { |field| eligible_build[field] == pilot[field] }
+      return ["evidence intake: eligible build does not match the protected registration"]
+    end
+
+    []
+  rescue TypeError, NoMethodError
+    ["evidence intake: authorization record has invalid types"]
+  end
+
   def validate_registration(registration)
     return ["registration: top level must be an object"] unless registration.is_a?(Hash)
 
@@ -273,20 +383,35 @@ module ResearchEvidence
       errors << "registration: all ten kill criteria must be frozen in order"
     end
 
+    interruption = load_interruption
+    interruption_errors = validate_interruption(interruption)
+    pause_is_frozen = interruption_errors.empty?
+
     documents = Array(registration.dig("protocol", "documents"))
     errors << "registration: protocol document set differs" unless documents == EXPECTED_PROTOCOL_DOCUMENTS
     documents.select { |document| document.is_a?(String) }.each do |document|
-      errors << "registration: missing protocol document #{document}" unless ROOT.join(document).file?
+      next if ROOT.join(document).file?
+      next if pause_is_frozen && document == PAUSED_INTAKE_DOCUMENT
+
+      errors << "registration: missing protocol document #{document}"
     end
 
-    errors.concat(validate_git_bindings(protocol_commit, expected_commit, expected_tag, expected_version, documents))
+    errors.concat(interruption_errors)
+    errors.concat(validate_git_bindings(
+                    protocol_commit,
+                    expected_commit,
+                    expected_tag,
+                    expected_version,
+                    documents,
+                    allow_pause_banners: interruption_errors.empty?
+                  ))
 
     errors
   rescue TypeError, NoMethodError
     ["registration: nested values have invalid types"]
   end
 
-  def validate_git_bindings(protocol_commit, product_commit, tag, version, documents)
+  def validate_git_bindings(protocol_commit, product_commit, tag, version, documents, allow_pause_banners: false)
     return ["registration: validation must run from a full Git checkout"] unless ROOT.join(".git").exist?
 
     errors = []
@@ -303,13 +428,22 @@ module ResearchEvidence
     if protocol_commit.match?(/\A[0-9a-f]{40}\z/)
       documents.each do |document|
         current_path = ROOT.join(document)
-        next unless current_path.file?
-
         frozen, _stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "show", "#{protocol_commit}:#{document}")
         if !status.success?
           errors << "registration: #{document} is absent from the protocol commit"
-        elsif frozen.b != current_path.binread
-          errors << "registration: #{document} differs from the protocol commit"
+        elsif !current_path.file?
+          unless allow_pause_banners && document == PAUSED_INTAKE_DOCUMENT
+            errors << "registration: missing protocol document #{document}"
+          end
+        else
+          current = current_path.binread
+          banner = PAUSE_BANNERS[document]
+          heading = PAUSE_HEADINGS[document]
+          paused_prefix = "#{heading}#{banner}".b if heading && banner
+          if allow_pause_banners && paused_prefix && current.start_with?(paused_prefix)
+            current = heading.b + current.delete_prefix(paused_prefix)
+          end
+          errors << "registration: #{document} differs from the protocol commit" if frozen.b != current
         end
       end
     end
@@ -807,6 +941,8 @@ if $PROGRAM_NAME == __FILE__
   begin
     registration = ResearchEvidence.load_registration
     errors = ResearchEvidence.validate_registration(registration)
+    interruption = ResearchEvidence.load_interruption
+    errors.concat(ResearchEvidence.validate_intake_authorization(registration, interruption))
     table = ResearchEvidence.read_csv(path)
     exact_version = registration.dig("pilot", "version")
     if stage_2

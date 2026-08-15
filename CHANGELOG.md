@@ -7,8 +7,6 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
-## [1.0.0-rc.7] - 2026-08-15
-
 ### Security hardening
 
 - Bound Git tree metadata, committed-card object counts, per-object sizes,
@@ -182,8 +180,7 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.7...HEAD
-[1.0.0-rc.7]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.6...v1.0.0-rc.7
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.6...HEAD
 [1.0.0-rc.6]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...v1.0.0-rc.4

@@ -1,9 +1,16 @@
 # Research operations kit
 
+> [!CAUTION]
+> **Collection is paused. No build is currently eligible.** The templates remain
+> public so the frozen method is auditable, but do not enter observations or
+> submit evidence until a protected replacement preregistration merges and
+> issue #5 explicitly reopens collection.
+
 This directory contains blank, privacy-minimizing templates for Fixcard's
-pre-pilot research and release-candidate pilot. Copy the templates into a
-participant-controlled or access-controlled location before entering data. Do
-not commit completed worksheets to this repository.
+pre-pilot research and release-candidate pilot. When collection is explicitly
+open, copy the templates into a participant-controlled or access-controlled
+location before entering data. Do not commit completed worksheets to this
+repository.
 
 The templates deliberately collect aliases, counts, timings, and decisions—not
 raw errors, commands, paths, repository names, or failure descriptions. Follow

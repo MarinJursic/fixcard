@@ -14,8 +14,8 @@
 
 ## Validation before 1.0
 
-The security-hardened production-v1 implementation is prepared as
-`1.0.0-rc.7`. Stable release
+The latest published engineering candidate is `1.0.0-rc.6`; an RC7 security
+fix is under protected review while pilot collection is paused. Stable release
 promotion remains intentionally blocked on evidence rather than code volume:
 
 - assemble at least 100 permissioned, sanitized real failure/resolution pairs;

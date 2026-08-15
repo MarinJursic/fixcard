@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "collection_paused",
+  "paused_at": "2026-08-15T11:25:11Z",
+  "source_issue_comment": "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5302005971",
+  "interrupted_pilot": {
+    "version": "1.0.0-rc.4",
+    "tag": "v1.0.0-rc.4",
+    "commit": "acf0c07944700085d56f50a02b26bbdf2525272d"
+  },
+  "restart_rule": "security_fix_stop_document_and_preregister_restart",
+  "reason_classes": [
+    "bounded_committed_card_resource_handling",
+    "runtime_risk_classification"
+  ],
+  "eligible_evidence_at_interruption": {
+    "permissioned_second_reviewed_real_pairs": 0,
+    "stage_1_recruited_participants": 0,
+    "stage_1_completed_two_week_diaries": 0,
+    "stage_2_real_card_observations": 0,
+    "stage_3_repositories": 0,
+    "stage_3_repository_weeks": 0
+  },
+  "carry_forward_eligible_evidence": false,
+  "eligible_build": null,
+  "replacement_registration": null,
+  "collection_open": false,
+  "stable_release_allowed": false
+}
