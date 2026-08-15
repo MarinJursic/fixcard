@@ -1,0 +1,172 @@
+name: Sanitized RC7 cross-repository validation summary
+description: Submit one coordinator-reviewed aggregate after the complete activated RC7 study; never submit repository-week rows.
+title: "[validation]: RC7 cross-repository summary"
+labels: [validation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form was preregistered while intake was closed and is valid only when installed byte-identically by the protected RC7 activation and `ruby scripts/research_evidence.rb --status` reports `OPEN`. Otherwise, do not submit. When active, use it only for one final sanitized summary across the full study. Keep completed CSVs, installation receipts, participant rows, repository-week rows, alias keys, and incident details access-controlled. Suppress every public cell smaller than five as `<5>` and report suspected security details only through private vulnerability reporting.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Coordinator, privacy, and evidence confirmation
+      options:
+        - label: I am submitting one coordinator-reviewed aggregate across at least five eligible repositories, not participant, receipt, or repository-week data.
+          required: true
+        - label: I removed aliases, raw failure text, commands, paths, credentials, customer data, proprietary content, installation receipts, and identifying timestamps.
+          required: true
+        - label: Every public cell smaller than five is shown only as `<5>`, and small cells cannot be reconstructed by differencing other values here.
+          required: true
+        - label: These are permissioned real-work observations; no synthetic, inferred, reconstructed, retrospective, or estimated evidence is included.
+          required: true
+
+  - type: dropdown
+    id: pilot_id
+    attributes:
+      label: Exact registered pilot
+      options:
+        - fixcard-rc7-2026-08-15
+    validations:
+      required: true
+
+  - type: dropdown
+    id: exact_pilot_build
+    attributes:
+      label: Exact registered build
+      description: Same-version rebuilds and every other build are ineligible.
+      options:
+        - 1.0.0-rc.7
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: protocol_confirmation
+    attributes:
+      label: Protocol and activation confirmation
+      options:
+        - label: Every Stage 2 and Stage 3 row records pilot `fixcard-rc7-2026-08-15`, the preregistered build-manifest digest, and `1.0.0-rc.7`.
+          required: true
+        - label: Every observed Stage 2 participant and every Stage 3 participant/repository membership has the required access-controlled receipt binding an exact release archive digest or the immutable Homebrew formula commit.
+          required: true
+        - label: No observation predates the activation boundary, and Stage 3 used four consecutive non-overlapping seven-day periods in 5–8 active repositories.
+          required: true
+        - label: The access-controlled files passed the protected complete-pilot validator without editing the registration, activation, or validator after collection.
+          required: true
+        - label: The additional four-week teammate-reuse follow-up is complete, so all ten kill criteria are measurable or explicitly reported missing.
+          required: true
+
+  - type: textarea
+    id: registration_and_coverage
+    attributes:
+      label: Registration, activation, coverage, and attrition
+      description: Link protected records only. Use cross-repository aggregates and `<5>` suppression.
+      value: |
+        Replacement registration commit:
+        Activation commit and issue #5 opening comment:
+        Pilot ID:
+        Build-manifest digest:
+        Evidence-ledger pull request:
+        Four-week observation period:
+        Eight-week follow-up end date:
+        Eligible repositories:
+        Ecosystem coverage:
+        Globally deduplicated pilot users:
+        Globally deduplicated users active in weeks 1–4:
+        Missing data and attrition:
+        All-recruited/all-active sensitivity views:
+    validations:
+      required: true
+
+  - type: textarea
+    id: milestone_stage_1_2
+    attributes:
+      label: Milestone 0, Stage 1, and Stage 2 aggregates
+      description: Preserve every registered denominator and report missing values as missing.
+      value: |
+        Permissioned and second-person-reviewed real pairs / 100 minimum:
+        Stage 1 recruited participants / 24–30:
+        Stage 1 two-week diary completers / all recruited:
+        Participants with at least two reusable failures / all recruited:
+        Stage 1 coverage quotas:
+        Stage 2 real cards / participants:
+        Median creation seconds / all observed durations:
+        Correct rank-one variants / all controlled variants:
+        Participants preferring Fixcard / participants answering once:
+        Stage 2 response count, missingness, and all-recruited sensitivity:
+        Distinct maintainers accepting committed cards:
+    validations:
+      required: true
+
+  - type: textarea
+    id: stage_3_gates
+    attributes:
+      label: Stage 3 gate aggregates
+      description: Do not publish raw timing samples or repository-level values. A triggered kill criterion overrides otherwise passing gates.
+      value: |
+        Relevant strong rank-one matches / all strong rank-one matches:
+        Search p95 milliseconds / measured searches:
+        Full lookups below 10 seconds / all eligible lookup timings:
+        Median capture seconds / all eligible capture timings:
+        Weekly active users creating at least three cards / weekly active users:
+        Globally deduplicated active reusers / globally deduplicated active users:
+        Shared cards accepted / submitted, and repositories represented:
+        Users distinguishing Fixcard / users answering once:
+        Differentiation response count, missingness, and all-active sensitivity:
+        Repositories reporting acceptable burden / all week-four responses:
+        Maintenance response count and missingness:
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Cross-repository safety summary
+      description: Use `0` or `>0 — details reported privately` for sensitive small counts. Never describe an incident here.
+      value: |
+        Serious trust or unsafe-certainty incidents:
+        Missed real secrets:
+        Users bypassing scanning because of false positives:
+        Secret-scanner catches:
+        Secret-scanner false positives:
+    validations:
+      required: true
+
+  - type: textarea
+    id: kill_criteria
+    attributes:
+      label: All ten kill criteria
+      description: For each frozen criterion, write pass, triggered, missing, or not measurable. Do not weaken a threshold after seeing results.
+      value: |
+        1. More than 80% create no card:
+        2. Median creation above 30 seconds:
+        3. Strong-match false positives above 20%:
+        4. Most prefer ordinary history or another tool:
+        5. Fewer than 10% of cards reused by another person over eight weeks:
+        6. Teams refuse committed cards:
+        7. Secret redaction is unreliable:
+        8. Cards become stale faster than used:
+        9. Automatic terminal capture is required:
+        10. Adoption depends on AI, cloud sync, or replay:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Predeclared decision
+      options:
+        - Go — every gate passed and no kill criterion triggered
+        - Change — at least one gate failed, evidence is missing, or a kill criterion triggered
+        - Stop — evidence supports stopping the current product direction
+    validations:
+      required: true
+
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations, deviations, and conflicts
+      description: Include sampling limits, missing data, deviations, coordinator conflicts, and any focused iteration without revealing private context.
+    validations:
+      required: true

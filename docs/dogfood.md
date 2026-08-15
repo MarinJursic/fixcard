@@ -1,14 +1,12 @@
 # Release-candidate dogfood program
 
-> [!CAUTION]
-> **Collection is paused.** RC7 is the preregistered replacement treatment,
-> but it is not eligible until a later explicit opening comment in issue #5
-> and a protected intake-authorization record. The RC4 instructions below are
-> the frozen historical treatment and must not be followed. RC4–RC6, untagged
-> builds, and moving package-manager heads remain ineligible; no evidence from
-> the interrupted treatment carries forward. See the
-> [replacement registration](../research/pilot-replacement-registration.json)
-> and the [current RC7 operating snapshot](dogfood-rc7.md).
+> [!IMPORTANT]
+> **The RC4 procedure below is historical and must not be followed.** The RC7
+> activation is installed, but collection is open only when the evidence validator
+> reports `OPEN`. Collection uses only the exact RC7 operating snapshot and protected
+> activation boundaries. RC4–RC6, untagged builds, moving package-manager heads,
+> and pre-boundary observations remain ineligible. Opening satisfies no gate.
+> See the [current RC7 operating snapshot](dogfood-rc7.md).
 
 Fixcard reaches stable 1.0 only after every stage in
 [Validation](validation.md) passes. This program covers the four-week Stage 3

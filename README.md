@@ -17,10 +17,10 @@ It never generates advice, uploads logs, runs a daemon, or executes text from a
 card. A match is a suggested resolution, not an automatic fix.
 
 > [!IMPORTANT]
-> RC7 is an engineering-verified prerelease and the protected replacement
-> treatment, but validation collection remains closed until a later explicit
-> opening and activation. The published real-user validation gates are not
-> complete, so stable 1.0 remains unreleased.
+> The protected RC7 activation is installed. Collection is open only when
+> `ruby scripts/research_evidence.rb --status` reports `OPEN`; otherwise it
+> remains closed. Opening satisfies no evidence gate and does
+> not make RC7 a stable or production release. Stable 1.0 remains unreleased.
 > See [Validation](docs/validation.md).
 
 ## The shortest path

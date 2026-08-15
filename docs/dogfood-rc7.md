@@ -1,10 +1,10 @@
 # RC7 replacement-pilot operating snapshot
 
-> [!CAUTION]
-> **Collection is closed.** This document freezes the future RC7 operating
-> procedure; it does not authorize observation or submission. No activity is
-> eligible until the registered not-before date, a later explicit opening
-> comment in issue #5, and a protected activation record have all taken effect.
+> [!IMPORTANT]
+> **The protected RC7 activation is installed.** Collection is open only when
+> the evidence validator reports `OPEN`. Only post-boundary observations from
+> the exact registered build are eligible.
+> Opening collection satisfies no gate and does not authorize stable 1.0.
 
 This is the operating snapshot for pilot `fixcard-rc7-2026-08-15`. It applies
 to Stage 2 and Stage 3 only after activation. The unchanged study gates,

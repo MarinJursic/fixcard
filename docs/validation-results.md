@@ -1,25 +1,20 @@
 # Validation results
 
-Last assessed: 2026-08-15.
+Protocol baseline assessed: 2026-08-15.
 
 ## Decision
 
 **Insufficient evidence — keep stable 1.0 unreleased.** RC7 is published and
-engineering-verified, and a protected replacement registration freezes its
-exact tag, commit, build manifest, six archive digests, immutable Homebrew
-formula commit, future not-before date, unchanged fixed denominators, and the
-same ten kill criteria. Collection remains closed. No eligible primary-research
-or dogfood report was submitted before or after the RC4 interruption, so every
-eligible count remains zero and nothing carries forward. Missing evidence is
-not treated as a zero, a pass, or a reconstructed estimate.
+engineering-verified, and the protected activation is installed. Collection is
+open only when the evidence validator reports `OPEN`. Every eligible count began
+at zero; opening
+collection satisfies no gate, carries nothing forward, and does not authorize
+stable 1.0. Missing evidence is never treated as zero, a pass, or an estimate.
 
-The interruption was recorded publicly in
-[issue #5](https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5302005971).
-RC4–RC6, untagged fixes, same-version rebuilds, and moving package-manager heads
-are ineligible. RC7 is not an eligible treatment until issue #5 explicitly
-opens the named stages and a later protected activation record binds that
-opening. The actual boundary will be no earlier than 2026-08-17 and no earlier
-than the activation; retrospective observations are forbidden.
+RC4–RC6, untagged fixes, same-version rebuilds, moving package-manager heads,
+and every pre-boundary observation remain ineligible. Stage 2 and Stage 3 use
+only the exact RC7 treatment after their protected activation boundaries.
+Retrospective observations are forbidden.
 
 The existing machine-readable
 [`pilot-registration.json`](../research/pilot-registration.json) is a pre-data
