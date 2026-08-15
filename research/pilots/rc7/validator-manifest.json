@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "files_sha256": {
+    "scripts/research_evidence.rb": "e2b6c7d45c177a901446b9e075b99a10db5a6097d9017a94e9851c6552b717d5",
+    "scripts/check_research_kit.rb": "37fe8216b79168f8f6fc8684bd10d3e80f5c57d2495b7c1f230ced5d16f8533b",
+    "scripts/verify_rc7_supply_chain.rb": "f4f142a08ca9c77c9c397ed991c4f3d3f8707c14b1e0f1e6f9091f17e8f2944a"
+  }
+}

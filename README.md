@@ -5,8 +5,8 @@
 [![MSRV: 1.85](https://img.shields.io/badge/MSRV-1.85-DEA584.svg)](https://www.rust-lang.org/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**A command failed? Type `fix`, paste the failure, and get the complete fix
-your team already proved.**
+**A command failed? Type `fix`, paste the failure, and retrieve the full
+recorded resolution your repository saved, if one matches.**
 
 Fixcard is a local command-line tool and open Markdown format for recurring
 development failures. It matches literal evidence, shows the whole recorded
@@ -17,9 +17,10 @@ It never generates advice, uploads logs, runs a daemon, or executes text from a
 card. A match is a suggested resolution, not an automatic fix.
 
 > [!IMPORTANT]
-> Stage 3 validation is paused under the documented security-fix restart rule;
-> no build is currently eligible for pilot evidence. Engineering checks are
-> automated, but the published real-user validation gates are not complete.
+> RC7 is an engineering-verified prerelease and the protected replacement
+> treatment, but validation collection remains closed until a later explicit
+> opening and activation. The published real-user validation gates are not
+> complete, so stable 1.0 remains unreleased.
 > See [Validation](docs/validation.md).
 
 ## The shortest path

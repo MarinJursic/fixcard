@@ -1,12 +1,14 @@
 # Research operations guide
 
 > [!CAUTION]
-> **Collection is paused.** The RC4 registration described below is the
-> immutable historical record of an interrupted treatment, not an active
-> authorization. No build is currently eligible. Restart requires a protected
-> replacement preregistration and a later explicit opening comment in issue
-> #5; no evidence from the interrupted treatment carries forward. See the
-> [interruption record](../research/pilot-interruption.json).
+> **Collection is paused.** RC7 is now the protected replacement
+> preregistration, not an authorization to collect. Observation can start only
+> after the 2026-08-17 not-before date, a later explicit opening comment in
+> issue #5, and a protected intake-authorization record. No RC4 evidence
+> carries forward. The body below preserves the historical protocol; use the
+> [RC7 operating snapshot](dogfood-rc7.md) for current treatment instructions
+> after activation. See the
+> [replacement registration](../research/pilot-replacement-registration.json).
 
 This guide turns the [pre-pilot protocol](research-study.md) and
 [release-candidate pilot](dogfood.md) into a coordinator-ready procedure. It

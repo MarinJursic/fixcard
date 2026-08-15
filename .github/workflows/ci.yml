@@ -7,7 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -32,6 +35,8 @@ jobs:
       - name: Validate GitHub issue forms
         run: ruby scripts/check_issue_forms.rb
       - name: Validate research operations kit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ruby scripts/check_research_kit.rb
       - name: Lint all targets and features
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings

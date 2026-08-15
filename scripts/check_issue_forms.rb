@@ -7,7 +7,7 @@ require "yaml"
 VALID_TYPES = Set.new(%w[checkboxes dropdown input markdown textarea upload]).freeze
 FORM_PATHS = Dir[".github/ISSUE_TEMPLATE/*.{yml,yaml}"].reject do |path|
   File.basename(path) == "config.yml"
-end.freeze
+end.concat(["research/pilots/rc7/validation-report.yml"]).freeze
 
 errors = []
 
