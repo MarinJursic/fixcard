@@ -97,8 +97,8 @@ end
 
 begin
   registration = ResearchEvidence.load_registration
-  errors.concat(ResearchEvidence.validate_registration(registration))
   interruption = ResearchEvidence.load_interruption
+  errors.concat(ResearchEvidence.validate_registration(registration, interruption: interruption))
   errors.concat(ResearchEvidence.validate_interruption(interruption))
   exact_version = registration.dig("pilot", "version")
   eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
@@ -155,6 +155,10 @@ begin
   end
   if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
     errors << "evidence intake accepted an open flag without an exact eligible build"
+  end
+  interruption_mutation["eligible_build"] = registration.fetch("pilot").slice("version", "tag", "commit")
+  if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
+    errors << "evidence intake accepted an unfrozen open RC4 mutation"
   end
 
   stage_2 = tables["stage-2-observations.csv"]

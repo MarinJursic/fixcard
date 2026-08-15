@@ -297,6 +297,10 @@ module ResearchEvidence
   end
 
   def validate_intake_authorization(registration, interruption)
+    unless validate_interruption(interruption).empty?
+      return ["evidence intake: interruption record is not the protected pause record"]
+    end
+
     return ["evidence intake: collection is paused; no build is currently eligible"] unless interruption["collection_open"] == true
 
     eligible_build = interruption["eligible_build"]
@@ -311,7 +315,7 @@ module ResearchEvidence
     ["evidence intake: authorization record has invalid types"]
   end
 
-  def validate_registration(registration)
+  def validate_registration(registration, interruption: nil)
     return ["registration: top level must be an object"] unless registration.is_a?(Hash)
 
     errors = []
@@ -383,7 +387,7 @@ module ResearchEvidence
       errors << "registration: all ten kill criteria must be frozen in order"
     end
 
-    interruption = load_interruption
+    interruption ||= load_interruption
     interruption_errors = validate_interruption(interruption)
     pause_is_frozen = interruption_errors.empty?
 
@@ -940,8 +944,8 @@ if $PROGRAM_NAME == __FILE__
 
   begin
     registration = ResearchEvidence.load_registration
-    errors = ResearchEvidence.validate_registration(registration)
     interruption = ResearchEvidence.load_interruption
+    errors = ResearchEvidence.validate_registration(registration, interruption: interruption)
     errors.concat(ResearchEvidence.validate_intake_authorization(registration, interruption))
     table = ResearchEvidence.read_csv(path)
     exact_version = registration.dig("pilot", "version")
