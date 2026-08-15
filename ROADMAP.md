@@ -14,9 +14,9 @@
 
 ## Validation before 1.0
 
-The latest published engineering candidate is `1.0.0-rc.6`; an RC7 security
-fix is under protected review while pilot collection is paused. Stable release
-promotion remains intentionally blocked on evidence rather than code volume:
+The security-fixed engineering candidate is `1.0.0-rc.7`; release verification
+is in progress while pilot collection remains paused. Stable release promotion
+remains intentionally blocked on evidence rather than code volume:
 
 - assemble at least 100 permissioned, sanitized real failure/resolution pairs;
 - conduct the diary study and concierge test described in the research memo;
