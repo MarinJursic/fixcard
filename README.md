@@ -17,9 +17,10 @@ It never generates advice, uploads logs, runs a daemon, or executes text from a
 card. A match is a suggested resolution, not an automatic fix.
 
 > [!IMPORTANT]
-> The production-v1 implementation is being validated as a release candidate.
-> Engineering checks are automated, but the published real-user validation
-> gates are not complete. See [Validation](docs/validation.md).
+> Stage 3 validation is paused under the documented security-fix restart rule;
+> no build is currently eligible for pilot evidence. Engineering checks are
+> automated, but the published real-user validation gates are not complete.
+> See [Validation](docs/validation.md).
 
 ## The shortest path
 
@@ -166,14 +167,14 @@ cargo install --git https://github.com/MarinJursic/fixcard \
 | --- | --- |
 | `fix` / `fix PROGRAM [ARGS...]` / `output \| fix` | Paste a failure, explicitly capture one command, or look up piped output. |
 | `fixcard` / `fixcard fix [text]` | Show the complete strongest known resolution; reads piped stdin when text is omitted. Use `--paste` for terminal input. |
-| `fixcard run -- PROGRAM [ARGS...]` | Run explicit argv, stream output, and look up a card after failure while preserving status. |
+| `fixcard run [--tool NAME=VERSION] -- PROGRAM [ARGS...]` | Run explicit argv, stream output, and look up a card after failure while preserving status; repeat `--tool` for constrained cards. |
 | `fixcard save [--team\|--global]` | Record a resolution with a minimal reviewed preview. |
 | `fixcard show [scope:]id` | Display one complete inert card and available provenance. |
 | `fixcard list` | List available cards using stable scoped references. |
 | `fixcard status` | Show storage paths, repository detection, and card counts. |
 | `fixcard shell-init [shell]` | Print a compatibility `fix` function when a shell function is specifically preferred. |
 | `fixcard completion <shell>` | Generate shell completion definitions. |
-| `fixcard lint [path]` | Strictly validate schema, anchors, versions, secrets, risk, lifecycle, and staleness. |
+| `fixcard lint [path]` | Strictly validate schema, anchors, versions, secrets, risk, lifecycle, and staleness. Without a path, checks repository cards inside Git or user-global cards outside Git. |
 | `fixcard find [text]` | Compatibility name for direct lookup. |
 | `fixcard new [...]` | Compatibility name for authoring. |
 
@@ -185,6 +186,9 @@ cannot hide valid knowledge. `lint` remains strict and fails on bad input.
 - Card content, code fences, recorded validation commands, and extension fields
   are always inert text.
 - Matching is local, deterministic, bounded, and explainable with `--explain`.
+- Displayed risk is recomputed from inert card content at lookup time; an
+  underdeclared or repository-denied dangerous command class is never shown as
+  a strong low-risk result.
 - A negative condition or clear tool-version mismatch prevents a strong result.
 - Weak candidates are hidden unless `--all` is requested.
 - Terminal controls are neutralized and secret-like output is redacted before

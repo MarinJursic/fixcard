@@ -46,6 +46,17 @@ pub enum Confidence {
     Strong,
 }
 
+/// Whether recorded tool constraints can be evaluated safely.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Applicability {
+    /// Every recorded tool constraint has a supplied, parseable current value.
+    Known,
+    /// At least one constrained tool has no supplied current version.
+    Unknown,
+    /// At least one recorded tool constraint is not a valid semantic range.
+    Invalid,
+}
+
 /// One human-readable contribution to a score.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatchEvidence {
@@ -68,6 +79,8 @@ pub struct MatchResult<'a> {
     pub evidence: Vec<MatchEvidence>,
     /// A current environment contradicts the card.
     pub version_mismatch: bool,
+    /// Whether tool applicability is known, unknown, or invalid.
+    pub applicability: Applicability,
     /// Recorded validation is older than policy.
     pub stale: bool,
 }
@@ -174,6 +187,7 @@ fn score_card<'a>(
     }
 
     let mut version_mismatch = false;
+    let mut applicability = Applicability::Known;
     compatibility(
         &card.applies.os,
         environment.os.as_deref(),
@@ -191,31 +205,43 @@ fn score_card<'a>(
         &mut version_mismatch,
     );
     for (tool, requirement) in &card.applies.tools {
-        let Some(current) = environment.tools.get(tool) else {
-            continue;
-        };
-        match parse_requirement(requirement) {
-            Some(required) if required.matches(current) => add(
-                &mut score,
-                &mut evidence,
-                5,
-                format!("{tool} {current} satisfies {requirement}"),
-            ),
-            Some(_) => {
-                version_mismatch = true;
-                add(
-                    &mut score,
-                    &mut evidence,
-                    -60,
-                    format!("{tool} {current} conflicts with {requirement}"),
-                );
-            }
-            None => add(
+        let Some(required) = parse_requirement(requirement) else {
+            applicability = Applicability::Invalid;
+            add(
                 &mut score,
                 &mut evidence,
                 -10,
                 format!("invalid recorded requirement `{requirement}` for {tool}"),
-            ),
+            );
+            continue;
+        };
+        let Some(current) = environment.tools.get(tool) else {
+            if applicability == Applicability::Known {
+                applicability = Applicability::Unknown;
+            }
+            add(
+                &mut score,
+                &mut evidence,
+                0,
+                format!("current {tool} version is unknown; card requires {requirement}"),
+            );
+            continue;
+        };
+        if required.matches(current) {
+            add(
+                &mut score,
+                &mut evidence,
+                5,
+                format!("{tool} {current} satisfies {requirement}"),
+            );
+        } else {
+            version_mismatch = true;
+            add(
+                &mut score,
+                &mut evidence,
+                -60,
+                format!("{tool} {current} conflicts with {requirement}"),
+            );
         }
     }
 
@@ -254,6 +280,7 @@ fn score_card<'a>(
         return None;
     }
     let confidence = if !version_mismatch
+        && applicability == Applicability::Known
         && negative.is_none()
         && !inactive
         && ((has_exact && score >= 45) || (positive_anchor_count >= 2 && score >= 30))
@@ -269,6 +296,7 @@ fn score_card<'a>(
         confidence,
         evidence,
         version_mismatch,
+        applicability,
         stale,
     })
 }
@@ -464,6 +492,56 @@ Use pnpm 10 to regenerate pnpm-lock.yaml.
         );
         assert_eq!(results[0].confidence, Confidence::Weak);
         assert!(results[0].version_mismatch);
+    }
+
+    #[test]
+    fn unknown_constrained_tool_version_forces_weak_result() {
+        let cards = [loaded("")];
+        let results = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE",
+            &cards,
+            &Environment::default(),
+            &SearchOptions::default(),
+        );
+        assert_eq!(results[0].confidence, Confidence::Weak);
+        assert_eq!(results[0].applicability, Applicability::Unknown);
+        assert!(results[0].evidence.iter().any(|item| {
+            item.reason == "current pnpm version is unknown; card requires >=10 <11"
+        }));
+    }
+
+    #[test]
+    fn invalid_tool_requirement_forces_weak_despite_multiple_anchors() {
+        let mut card = loaded("");
+        card.document
+            .card
+            .applies
+            .tools
+            .insert("pnpm".to_owned(), "not-a-range".to_owned());
+        let cards = [card];
+        let environment = Environment {
+            tools: BTreeMap::from([("pnpm".to_owned(), Version::new(10, 13, 1))]),
+            ..Environment::default()
+        };
+        let results = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile",
+            &cards,
+            &environment,
+            &SearchOptions::default(),
+        );
+        assert_eq!(results[0].confidence, Confidence::Weak);
+        assert_eq!(results[0].applicability, Applicability::Invalid);
+
+        let without_current_version = search(
+            "ERR_PNPM_OUTDATED_LOCKFILE frozen-lockfile",
+            &cards,
+            &Environment::default(),
+            &SearchOptions::default(),
+        );
+        assert_eq!(
+            without_current_version[0].applicability,
+            Applicability::Invalid
+        );
     }
 
     #[test]

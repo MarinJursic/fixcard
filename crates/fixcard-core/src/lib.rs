@@ -5,7 +5,9 @@ mod model;
 mod normalize;
 mod parser;
 
-pub use matching::{Confidence, Environment, MatchEvidence, MatchResult, SearchOptions, search};
+pub use matching::{
+    Applicability, Confidence, Environment, MatchEvidence, MatchResult, SearchOptions, search,
+};
 pub use model::{
     Applies, Card, CardDocument, CardOrigin, LoadedCard, MatchSpec, Risk, Verification,
 };

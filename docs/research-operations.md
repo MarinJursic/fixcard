@@ -1,5 +1,13 @@
 # Research operations guide
 
+> [!CAUTION]
+> **Collection is paused.** The RC4 registration described below is the
+> immutable historical record of an interrupted treatment, not an active
+> authorization. No build is currently eligible. Restart requires a protected
+> replacement preregistration and a later explicit opening comment in issue
+> #5; no evidence from the interrupted treatment carries forward. See the
+> [interruption record](../research/pilot-interruption.json).
+
 This guide turns the [pre-pilot protocol](research-study.md) and
 [release-candidate pilot](dogfood.md) into a coordinator-ready procedure. It
 does not replace local ethics, employment, privacy, or legal review. Completed

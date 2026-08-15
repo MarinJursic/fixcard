@@ -311,7 +311,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fixcard"
-version = "1.0.0-rc.6"
+version = "1.0.0-rc.7"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "fixcard-core"
-version = "1.0.0-rc.6"
+version = "1.0.0-rc.7"
 dependencies = [
  "jiff",
  "proptest",
@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "fixcard-git"
-version = "1.0.0-rc.6"
+version = "1.0.0-rc.7"
 dependencies = [
  "fixcard-core",
  "tempfile",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "fixcard-lint"
-version = "1.0.0-rc.6"
+version = "1.0.0-rc.7"
 dependencies = [
  "fixcard-core",
  "jiff",

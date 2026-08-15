@@ -49,8 +49,9 @@ use `repo:id`, `private:id`, or `global:id` with `show` when it is ambiguous.
 ## Why is a plausible result marked weak?
 
 Fixcard prioritizes precision over recall. Missing exact evidence, a negative
-condition, a version/platform conflict, staleness, or lifecycle state can keep a
-candidate weak. Use `--explain --all` to inspect why.
+condition, an unknown or conflicting tool version, a platform conflict,
+scanner-raised or repository-denied command risk, staleness, or lifecycle state
+can keep a candidate weak. Use `--explain --all` to inspect why.
 
 ## Is the format stable?
 

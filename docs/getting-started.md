@@ -43,6 +43,17 @@ channels, keeps only a bounded in-memory tail, and searches after a nonzero
 exit. The command's exit code remains the process exit code even when a card
 matches.
 
+If a card deliberately constrains tool versions, supply current versions on
+the explicit form so applicability can be evaluated without executing an extra
+version probe:
+
+```bash
+fixcard run --tool pnpm=10.13.1 --tool node=22.14.0 -- \
+  pnpm install --frozen-lockfile
+```
+
+An invalid recorded range or a missing current version keeps that card weak.
+
 This mode uses pipes rather than a pseudo-terminal. A program may disable color
 or interactive prompts. Run TTY-dependent commands normally and pass their
 failure text to `fixcard fix` afterward.
@@ -78,8 +89,9 @@ Use `fixcard run -- some-command` for that case.
 ## 4. Read the result before acting
 
 A strong result includes the complete resolution in the same invocation. It
-also shows the origin, declared risk, applicability, evidence date, and recorded
-validation. Commands in cards are inert text.
+also shows the origin, effective risk, applicability, evidence date, and
+recorded validation. The built-in scanner can raise effective risk above an
+author's declaration; commands in cards remain inert text.
 
 To inspect a card by ID later:
 

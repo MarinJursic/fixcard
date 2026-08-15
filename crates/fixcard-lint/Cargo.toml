@@ -10,7 +10,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-fixcard-core = { version = "=1.0.0-rc.6", path = "../fixcard-core" }
+fixcard-core = { version = "=1.0.0-rc.7", path = "../fixcard-core" }
 jiff.workspace = true
 regex.workspace = true
 semver.workspace = true

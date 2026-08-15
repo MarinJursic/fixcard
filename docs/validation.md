@@ -1,5 +1,12 @@
 # Validation plan
 
+> [!CAUTION]
+> **Stage 3 collection is paused.** No Fixcard build is currently eligible,
+> and the public validation intake form is disabled. The staged plan below
+> remains frozen, but observation and submission can restart only after a
+> protected replacement preregistration and a later explicit opening comment
+> in issue #5. No evidence from the interrupted RC4 treatment carries forward.
+
 Fixcard separates engineering verification from product validation.
 
 Participants use the privacy-preserving [dogfood program](dogfood.md) and submit

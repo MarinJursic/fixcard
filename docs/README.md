@@ -14,6 +14,7 @@
 
 - [Security and privacy](security-and-privacy.md)
 - [Threat model](threat-model.md)
+- [Architecture decision records](decisions/README.md)
 - [Validation plan](validation.md)
 - [Pre-pilot research protocol](research-study.md)
 - [Research operations guide and templates](research-operations.md)

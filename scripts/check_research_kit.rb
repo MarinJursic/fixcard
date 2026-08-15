@@ -4,7 +4,6 @@
 require "csv"
 require "pathname"
 require "tempfile"
-require "yaml"
 
 require_relative "research_evidence"
 
@@ -98,7 +97,9 @@ end
 
 begin
   registration = ResearchEvidence.load_registration
-  errors.concat(ResearchEvidence.validate_registration(registration))
+  interruption = ResearchEvidence.load_interruption
+  errors.concat(ResearchEvidence.validate_registration(registration, interruption: interruption))
+  errors.concat(ResearchEvidence.validate_interruption(interruption))
   exact_version = registration.dig("pilot", "version")
   eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
 
@@ -142,6 +143,22 @@ begin
   protocol_commit_mutation_errors = ResearchEvidence.validate_registration(protocol_commit_mutation)
   unless protocol_commit_mutation_errors.any? { |error| error.include?("protocol commit differs from the frozen") }
     errors << "registration accepted a changed protocol commit"
+  end
+
+  interruption_mutation = JSON.parse(JSON.generate(interruption))
+  interruption_mutation["collection_open"] = true
+  if ResearchEvidence.validate_interruption(interruption_mutation).empty?
+    errors << "interruption record accepted an open collection"
+  end
+  if ResearchEvidence.validate_intake_authorization(registration, interruption).empty?
+    errors << "evidence intake remained open during the registered pause"
+  end
+  if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
+    errors << "evidence intake accepted an open flag without an exact eligible build"
+  end
+  interruption_mutation["eligible_build"] = registration.fetch("pilot").slice("version", "tag", "commit")
+  if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
+    errors << "evidence intake accepted an unfrozen open RC4 mutation"
   end
 
   stage_2 = tables["stage-2-observations.csv"]
@@ -533,24 +550,26 @@ begin
   dogfood = File.read(ROOT.join("docs", "dogfood.md"), encoding: "UTF-8")
   errors << "dogfood.md: must name exact pilot build #{exact_version}" unless dogfood.include?("`#{exact_version}`")
   errors << "dogfood.md: must not direct pilots to the newest candidate" if dogfood.match?(/newest release candidate/i)
+  dogfood_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/dogfood.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/dogfood.md")
+  errors << "dogfood.md: must state that collection is paused" unless dogfood.start_with?(dogfood_pause_prefix)
+
+  operations = File.read(ROOT.join("docs", "research-operations.md"), encoding: "UTF-8")
+  operations_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/research-operations.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/research-operations.md")
+  errors << "research-operations.md: must state that collection is paused" unless operations.start_with?(operations_pause_prefix)
+
+  validation = File.read(ROOT.join("docs", "validation.md"), encoding: "UTF-8")
+  validation_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/validation.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/validation.md")
+  errors << "validation.md: must state that collection and intake are paused" unless validation.start_with?(validation_pause_prefix)
 
   results = File.read(ROOT.join("docs", "validation-results.md"), encoding: "UTF-8")
   errors << "validation-results.md: must name exact pilot build #{exact_version}" unless results.include?("`#{exact_version}`")
+  errors << "validation-results.md: must state that public intake is disabled" unless results.include?("public validation intake form is disabled")
+
+  research_readme = File.read(ROOT.join("research", "README.md"), encoding: "UTF-8")
+  errors << "research/README.md: must state that collection is paused" unless research_readme.include?("No build is currently eligible")
 
   form_path = ROOT.join(".github", "ISSUE_TEMPLATE", "validation-report.yml")
-  form = YAML.safe_load(File.read(form_path, encoding: "UTF-8"), aliases: false, filename: form_path.to_s)
-  build_field = form.fetch("body").find { |element| element["id"] == "exact_pilot_build" }
-  unless build_field&.dig("type") == "dropdown" && build_field.dig("attributes", "options") == [exact_version]
-    errors << "validation-report.yml: exact_pilot_build must offer only #{exact_version}"
-  end
-
-  confirmations = form.fetch("body").find { |element| element["id"] == "protocol_confirmation" }
-  confirmation_labels = confirmations&.dig("attributes", "options")&.map { |option| option["label"] } || []
-  errors << "validation-report.yml: must confirm fixcard --version" unless confirmation_labels.any? { |label| label.include?("fixcard --version") && label.include?(exact_version) }
-  errors << "validation-report.yml: must confirm fix --version" unless confirmation_labels.any? { |label| label.include?("fix --version") && label.include?(exact_version) }
-  privacy = form.fetch("body").find { |element| element["id"] == "privacy" }
-  privacy_labels = privacy&.dig("attributes", "options")&.map { |option| option["label"] } || []
-  errors << "validation-report.yml: must require public small-cell suppression" unless privacy_labels.any? { |label| label.include?("smaller than five") }
+  errors << "validation-report.yml: paused collection must not expose an active submission form" if form_path.exist?
 
   Tempfile.create(["malformed-stage-3", ".csv"]) do |file|
     file.write("repository_alias,week\n\"unterminated")
@@ -573,7 +592,7 @@ begin
       nil
     end
   end
-rescue ArgumentError, KeyError, Psych::Exception => e
+rescue ArgumentError, KeyError => e
   errors << "research registration controls: #{e.message}"
 end
 

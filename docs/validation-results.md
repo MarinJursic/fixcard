@@ -1,21 +1,33 @@
 # Validation results
 
-Last assessed: 2026-08-05.
+Last assessed: 2026-08-15.
 
 ## Decision
 
-**Insufficient evidence — keep stable 1.0 unreleased.** The exact Stage 3
-treatment remains `1.0.0-rc.4`. Newer candidates are engineering builds and do
-not replace RC4 because no qualifying security-fix restart was invoked. No
-eligible primary-research or dogfood report has been submitted. Missing
-evidence is not treated as a zero, a pass, or a reconstructed estimate.
+**Insufficient evidence — keep stable 1.0 unreleased.** Stage 3 RC4 collection
+is paused under the documented security-fix restart rule. A defensive review
+found a committed-card resource-exhaustion path and a runtime risk-labeling
+defect in RC4. No eligible primary-research or dogfood report was submitted
+before the interruption, so eligible evidence remains zero and nothing carries
+forward. Missing evidence is not treated as a zero, a pass, or a reconstructed
+estimate.
 
-The machine-readable
+The interruption was recorded publicly in
+[issue #5](https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5302005971).
+RC4, RC5, RC6, untagged fixes, and moving package-manager heads are ineligible
+while collection is paused. A replacement can become the one exact Stage 3
+treatment only after its security fixes merge, release artifacts and digests
+are verified, a protected preregistration freezes them with a new eligible
+start boundary, and issue #5 explicitly reopens collection.
+
+The existing machine-readable
 [`pilot-registration.json`](../research/pilot-registration.json) is a pre-data
 registration that freezes `1.0.0-rc.4`, commit
 `acf0c07944700085d56f50a02b26bbdf2525272d`, six archive digests, an eligible
 start date of 2026-08-10, all fixed gates, and all ten kill criteria. It records
-zero eligible evidence at registration and carries nothing across builds.
+zero eligible evidence at registration and carries nothing across builds. It
+remains the immutable record of the interrupted treatment; it does not authorize
+new RC4 collection after the pause.
 
 ## Evidence ledger
 
@@ -24,7 +36,7 @@ zero eligible evidence at registration and carries nothing across builds.
 | Evidence corpus | At least 100 sanitized real failure/resolution pairs with permission and second-person review | None submitted | Not started / not documented |
 | Problem diary | 24–30 developers across the specified contexts, roles, and platforms for two working weeks | None submitted | Not started / not documented |
 | Concierge workflow | Three real cards per participant plus controlled recurrences and maintainer review | None submitted | Not started / not documented |
-| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | Exact pilot build `1.0.0-rc.4` published 2026-08-04 and registered before eligible collection; no eligible report issues submitted | Not started / insufficient |
+| Dogfood pilot | One exact build in 5–8 active repositories for four weeks | RC4 collection interrupted by the security-fix rule with zero eligible report issues; replacement not yet frozen | Paused / restart required |
 
 All product thresholds therefore remain unproven, including recurrence
 frequency, concierge creation time, seeded retrieval precision, comparative
@@ -81,10 +93,14 @@ adverse observations into a pass.
 
 ## Reporting
 
+The public validation intake form is disabled while collection is paused. Do
+not submit RC4 or replacement-build evidence until a protected replacement
+preregistration merges and issue #5 explicitly reopens collection.
+
 Follow the [research operations guide](research-operations.md), the
 [pre-pilot protocol](research-study.md), and the
-[four-week dogfood protocol](dogfood.md). Submit Stage 3 results through the
-[sanitized cross-repository validation form](https://github.com/MarinJursic/fixcard/issues/new?template=validation-report.yml).
+[four-week dogfood protocol](dogfood.md). After an eligible replacement pilot
+is completed, its protected protocol will restore the sanitized intake form.
 Repository-week and participant-level records remain access-controlled; only
 small-cell-suppressed aggregate results may be submitted publicly.
 The umbrella tracker is

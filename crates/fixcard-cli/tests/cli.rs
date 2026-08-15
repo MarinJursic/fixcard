@@ -121,6 +121,24 @@ fn fix_renders_the_complete_resolution_in_one_invocation() {
 }
 
 #[test]
+fn strong_stale_result_is_prominently_labeled_before_instructions() {
+    let repository = repository();
+    fs::write(
+        repository.path().join(".fixcards/known-build.md"),
+        CARD.replace("last_verified: 2026-08-03", "last_verified: 2020-01-01"),
+    )
+    .expect("write stale card");
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "E_GENERATED_STALE", "generated-client"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 strong Fixcard match"))
+        .stdout(predicate::str::contains("state: stale recorded validation"));
+}
+
+#[test]
 fn bare_fixcard_uses_the_one_step_fix_flow() {
     let repository = repository();
     cargo_bin_cmd!("fixcard")
@@ -259,6 +277,50 @@ fn run_preserves_child_output_and_failure_status() {
 
 #[cfg(unix)]
 #[test]
+fn run_does_not_match_diagnostics_that_appear_only_in_argv() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args([
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "exit 23",
+            "E_GENERATED_STALE generated-client",
+        ])
+        .assert()
+        .code(23)
+        .stderr(predicate::str::contains("no captured output"))
+        .stderr(predicate::str::contains("strong Fixcard match").not());
+}
+
+#[cfg(unix)]
+#[test]
+fn run_preserves_child_status_when_post_exit_lookup_fails() {
+    use std::os::unix::fs::symlink;
+
+    let repository = empty_repository();
+    let outside = TempDir::new().expect("create outside directory");
+    symlink(outside.path(), repository.path().join(".fixcards")).expect("create symlink");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args([
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "printf 'captured failure' >&2; exit 23",
+        ])
+        .assert()
+        .code(23)
+        .stderr(predicate::str::contains("captured failure"))
+        .stderr(predicate::str::contains("warning: Fixcard lookup failed"))
+        .stderr(predicate::str::contains("refusing unsafe card directory"));
+}
+
+#[cfg(unix)]
+#[test]
 fn installed_fix_preserves_child_output_and_failure_status() {
     let repository = repository();
     cargo_bin_cmd!("fix")
@@ -371,6 +433,81 @@ fn redacts_secret_like_values_when_showing_an_existing_card() {
 }
 
 #[test]
+fn understated_dangerous_card_is_never_a_strong_default_result() {
+    let repository = repository();
+    let source = CARD.replace(
+        "Run the repository generator and review its diff.",
+        "Run `su\u{1b}[31mdo r\u{1b}[0mm -rf /var/example`.",
+    );
+    fs::write(repository.path().join(".fixcards/known-build.md"), source)
+        .expect("write understated dangerous card");
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "E_GENERATED_STALE", "generated-client"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("No strong Fixcard match"));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["fix", "--all", "E_GENERATED_STALE", "generated-client"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "high risk (scanner-raised from declared low risk)",
+        ));
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["show", "known-build"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "risk: high risk (scanner-raised from declared low risk)",
+        ))
+        .stdout(predicate::str::contains("sudo rm -rf /var/example"))
+        .stdout(predicate::str::contains("risk: low risk").not());
+}
+
+#[cfg(unix)]
+#[test]
+fn run_accepts_explicit_tool_versions_for_constrained_cards() {
+    let repository = repository();
+    let source = CARD.replace(
+        "risk: low",
+        "applies:\n  tools:\n    generator: \">=1 <2\"\nrisk: low",
+    );
+    fs::write(repository.path().join(".fixcards/known-build.md"), source)
+        .expect("write tool-constrained card");
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args([
+            "run",
+            "--tool",
+            "generator=1.2.3",
+            "--",
+            "sh",
+            "-c",
+            "printf 'E_GENERATED_STALE generated-client' >&2; exit 23",
+        ])
+        .assert()
+        .code(23)
+        .stderr(predicate::str::contains("1 strong Fixcard match"));
+}
+
+#[test]
+fn explicit_missing_lint_path_is_an_error() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .args(["lint", "definitely-missing-card.md"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot inspect"))
+        .stderr(predicate::str::contains("definitely-missing-card.md"));
+}
+
+#[test]
 fn lint_reports_an_id_filename_mismatch() {
     let repository = repository();
     let original = repository.path().join(".fixcards/known-build.md");
@@ -382,6 +519,58 @@ fn lint_reports_an_id_filename_mismatch() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains("id-filename-mismatch"));
+}
+
+#[test]
+fn default_lint_strictly_checks_only_repository_cards() {
+    let repository = repository();
+    let data = TempDir::new().expect("create isolated data directory");
+    let global_cards = data.path().join("cards");
+    fs::create_dir(&global_cards).expect("create global cards directory");
+    fs::write(global_cards.join("broken.md"), "not a Fixcard")
+        .expect("write malformed global card");
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .arg("lint")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Linted 1 card"))
+        .stderr(predicate::str::contains("broken.md").not());
+
+    fs::write(
+        repository.path().join(".fixcards/known-build.md"),
+        "not a Fixcard",
+    )
+    .expect("write malformed repository card");
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .arg("lint")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot parse"))
+        .stderr(predicate::str::contains("known-build.md"));
+}
+
+#[test]
+fn default_lint_strictly_checks_global_cards_outside_git() {
+    let directory = TempDir::new().expect("create non-repository directory");
+    let data = TempDir::new().expect("create isolated data directory");
+    let global_cards = data.path().join("cards");
+    fs::create_dir(&global_cards).expect("create global cards directory");
+    fs::write(global_cards.join("broken.md"), "not a Fixcard")
+        .expect("write malformed global card");
+
+    cargo_bin_cmd!("fixcard")
+        .current_dir(directory.path())
+        .env("FIXCARD_DATA_DIR", data.path())
+        .arg("lint")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot parse"))
+        .stderr(predicate::str::contains("broken.md"));
 }
 
 #[test]
@@ -425,6 +614,19 @@ fn status_is_actionable_outside_git() {
         .stdout(predicate::str::contains("Repository: not detected"))
         .stdout(predicate::str::contains("fix PROGRAM [ARGS...]"))
         .stdout(predicate::str::contains("fixcard save"));
+}
+
+#[test]
+fn git_discovery_failures_are_not_reported_as_non_repositories() {
+    let repository = repository();
+    cargo_bin_cmd!("fixcard")
+        .current_dir(repository.path())
+        .env("PATH", "")
+        .arg("status")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("Repository: not detected").not())
+        .stderr(predicate::str::contains("cannot run Git"));
 }
 
 #[test]

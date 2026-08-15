@@ -63,3 +63,5 @@ without the binary.
 Material format or trust changes require an ADR under `docs/decisions/`, an
 example, migration behavior, and tests. Features outside the documented command
 surface require evidence from real workflows and an explicit scope review.
+See the [ADR index](docs/decisions/README.md) for the template and accepted
+records.
