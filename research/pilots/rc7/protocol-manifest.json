@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "historical_protocol_commit": "c513e51501fb878dce67f268cffb36593e6ac88d",
+  "files_sha256": {
+    "README.md": "1218cb4f635825bf3d3593e1e0347256caadd8dbd388d6396779e5268c2e11ed",
+    "research/README.md": "590cc83bcc06081eb577c6ddde7efa93b681fca748c916a87588855783344b63",
+    "docs/README.md": "d4a1675dba2ccd55ae1ce75985560e0bd381e7b14ebf48762b0b37dc67f61928",
+    "docs/installation.md": "38b47d5cdbac3aeb1b4af9555f414f9efc51e134504ca04337edb3660c6bd3da",
+    "docs/validation-results.md": "3094b426eb6810660958dd8e756f307a2970d06913c862cf2bc6b920e91373b4",
+    ".github/workflows/ci.yml": "932cbe080076528cc5967f79d673174f8e4b080440169618213c7cd610f15aa1",
+    "docs/research-study.md": "911b09e0b6b6d6ba7a00214f5638b5399d33a51d0e60507308dd38cfe5a0fbc0",
+    "docs/research-operations.md": "225af2240effe7deeeba58cc5625a52cfcef72e9634dbeb4198aeb3f5d42ab04",
+    "docs/validation.md": "04280ae7cbae27c866cb806633a5bf645fef248cde42570cdc6707b5646b9bd9",
+    "docs/dogfood.md": "ea12327459c4fb811467b023d53dfea4fc7b0782c4d348d91f4b694e3e203689",
+    "docs/dogfood-rc7.md": "88462a59b9ddc24310ae75fa37302e94dbdb5641bc3808aa32257fe4123474fb",
+    "research/templates/stage-1-participants.csv": "7e883b76ebe7eb64dd08818720e6acda84e4db047d43ba4b928bbdd83a356097",
+    "research/templates/stage-2-observations.csv": "bfd0d2dda80653393450a6d07e0d1a20ed498dde3924185c9cd53af0db931c4e",
+    "research/templates/stage-3-repository-weeks.csv": "54ccea6ff46dfdff9437541c21eab0fa8f96ef6fcc3be980168f8f0e834ae3be",
+    "research/templates/stage-3-active-user-reuse.csv": "5dbe273bd5a9fabf836d56370dd4ad077cfa7223d52f26d92ec90bfb3bbf3904",
+    "research/templates/stage-3-eight-week-card-reuse.csv": "338bd398da39572bd798d89f4897083e0abbf596c1982b8d94f8fe82faa31510",
+    "research/templates/aggregate-report.md": "3775a9aab665415c4d63608f70982010ae1ef48ff1f45837c80362c3e16eef5f",
+    "research/pilots/rc7/build-manifest.json": "1276f1aec78df6c8c3426ec9a094f687476ee3f66ba7577d525824f9355d4df8",
+    "research/pilots/rc7/templates/stage-2-observations.csv": "81e1d2491997ed66cca2a1c8b986cf50438b723e6cf06c92d6c88f64a9187042",
+    "research/pilots/rc7/templates/stage-3-repository-weeks.csv": "db1f4d29067bc61e52dac2e262e7a91576fa0223404490a81aa467a500ba9333",
+    "research/pilots/rc7/templates/stage-3-active-user-reuse.csv": "7c4b37da9d6efdec59a8285d8a8d4115aa8ae8663a685ffa78043506bbeb822d",
+    "research/pilots/rc7/templates/stage-3-eight-week-card-reuse.csv": "68c4aba57efecabd5e5f185fe20c192abf502a698fd18554d5582ae02cc644ee",
+    "research/pilots/rc7/templates/installation-receipts.csv": "b25bb9e8d3824d0fa9ddcb3b92b90f9db1bdf78ea5bcbdb6f3752131fb18cd03",
+    "research/pilots/rc7/activation-policy.json": "4daa29d56cdd46ad61a9d1691ae319a4ea38ead2f99367d9d6fda19ae46a4dde",
+    "research/pilots/rc7/open-banners.json": "64d97c9779a0ec7c55c21f80eb912dfac1f58f563001824b9d438fb607c124ca",
+    "research/pilots/rc7/validation-report.yml": "280002611023b17bcf457381e769b9102950af39cefcff8c9911784656e80032"
+  },
+  "enforcement_binding": {
+    "registration_commit_must_be_on_protected_main": true,
+    "activation_must_bind_exact_registration_commit_and_validator_tree": true,
+    "registration_and_open_event_in_same_pull_request_forbidden": true
+  }
+}

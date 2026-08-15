@@ -1,7 +1,7 @@
 # Installation and verification
 
-Production-v1 builds are currently distributed as release-candidate archives
-while the public validation gates are completed.
+Fixcard is currently distributed only as prerelease archives while the public
+product-validation gates are completed. Stable 1.0 remains unreleased.
 
 ## Homebrew on macOS or Linux
 

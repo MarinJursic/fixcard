@@ -1,14 +1,14 @@
 # Release-candidate dogfood program
 
 > [!CAUTION]
-> **Collection is paused.** No Fixcard build is currently eligible for this
-> pilot. The RC4 instructions below are the frozen historical treatment and
-> must not be followed while the pause is active. RC4, RC5, RC6, RC7,
-> untagged builds, and moving package-manager heads are ineligible. Restart
-> requires a protected replacement preregistration and a later explicit
-> opening comment in issue #5; no evidence from the interrupted treatment
-> carries forward. See the
-> [interruption record](../research/pilot-interruption.json).
+> **Collection is paused.** RC7 is the preregistered replacement treatment,
+> but it is not eligible until a later explicit opening comment in issue #5
+> and a protected intake-authorization record. The RC4 instructions below are
+> the frozen historical treatment and must not be followed. RC4–RC6, untagged
+> builds, and moving package-manager heads remain ineligible; no evidence from
+> the interrupted treatment carries forward. See the
+> [replacement registration](../research/pilot-replacement-registration.json)
+> and the [current RC7 operating snapshot](dogfood-rc7.md).
 
 Fixcard reaches stable 1.0 only after every stage in
 [Validation](validation.md) passes. This program covers the four-week Stage 3

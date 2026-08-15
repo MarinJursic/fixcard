@@ -52,6 +52,7 @@ FORBIDDEN_HEADERS = %w[
 ].freeze
 
 errors = []
+deep_copy_csv = ->(table) { CSV.parse(table.to_csv, headers: true) }
 templates = ROOT.join("research", "templates")
 tables = {}
 
@@ -72,6 +73,41 @@ EXPECTED_HEADERS.each do |name, expected|
   errors << "#{name}: privacy-sensitive headers: #{forbidden.join(', ')}" unless forbidden.empty?
 rescue CSV::MalformedCSVError => e
   errors << "#{name}: malformed CSV: #{e.message}"
+end
+
+RC7_EXPECTED_HEADERS = {
+  "stage-2-observations.csv" => ResearchEvidence::RC7_STAGE_2_HEADERS,
+  "stage-3-repository-weeks.csv" => ResearchEvidence::RC7_STAGE_3_HEADERS,
+  "stage-3-active-user-reuse.csv" => ResearchEvidence::RC7_STAGE_3_USER_REUSE_HEADERS,
+  "stage-3-eight-week-card-reuse.csv" => ResearchEvidence::RC7_STAGE_3_CARD_REUSE_HEADERS,
+  "installation-receipts.csv" => ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS
+}.freeze
+
+RC7_EXPECTED_HEADERS.each do |name, expected|
+  path = ROOT.join("research", "pilots", "rc7", "templates", name)
+  unless path.file?
+    errors << "missing RC7 research template: #{path.relative_path_from(ROOT)}"
+    next
+  end
+
+  table = CSV.read(path, headers: true)
+  errors << "#{path.relative_path_from(ROOT)}: headers differ from the RC7 schema" unless table.headers == expected
+  errors << "#{path.relative_path_from(ROOT)}: distributed template must be blank" unless table.empty?
+  forbidden = table.headers & FORBIDDEN_HEADERS
+  errors << "#{path.relative_path_from(ROOT)}: privacy-sensitive headers: #{forbidden.join(', ')}" unless forbidden.empty?
+rescue CSV::MalformedCSVError => e
+  errors << "#{path.relative_path_from(ROOT)}: malformed CSV: #{e.message}"
+end
+
+known_blank_csvs = EXPECTED_HEADERS.keys.map { |name| "research/templates/#{name}" } +
+                   RC7_EXPECTED_HEADERS.keys.map { |name| "research/pilots/rc7/templates/#{name}" }
+public_csvs = ROOT.glob("**/*.csv").reject do |path|
+  relative = path.relative_path_from(ROOT).each_filename.to_a
+  relative.include?(".git") || relative.include?("target")
+end
+public_csvs.each do |path|
+  relative = path.relative_path_from(ROOT).to_s
+  errors << "unexpected public CSV may contain participant data: #{relative}" unless known_blank_csvs.include?(relative)
 end
 
 report = templates.join("aggregate-report.md")
@@ -98,10 +134,32 @@ end
 begin
   registration = ResearchEvidence.load_registration
   interruption = ResearchEvidence.load_interruption
+  replacement = ResearchEvidence.load_replacement_registration
+  authorization = ResearchEvidence.load_intake_authorization
+  github_event = if ENV["GITHUB_EVENT_PATH"]
+                   ResearchEvidence.load_strict_json_object(
+                     Pathname.new(ENV.fetch("GITHUB_EVENT_PATH")),
+                     "GitHub Actions event"
+                   )
+                 else
+                   {}
+                 end
+  activation_candidate_mode = ResearchEvidence.activation_candidate_event?(
+    authorization,
+    event_name: ENV["GITHUB_EVENT_NAME"],
+    event: github_event
+  )
   errors.concat(ResearchEvidence.validate_registration(registration, interruption: interruption))
   errors.concat(ResearchEvidence.validate_interruption(interruption))
-  exact_version = registration.dig("pilot", "version")
-  eligible_on = ResearchEvidence.iso_date(registration.dig("pilot", "eligible_observations_on_or_after"))
+  errors.concat(
+    ResearchEvidence.validate_replacement_registration(
+      replacement,
+      registration: registration,
+      interruption: interruption
+    )
+  )
+  exact_version = replacement.dig("pilot", "version")
+  eligible_on = ResearchEvidence.iso_date(replacement.dig("pilot", "eligible_observations_on_or_after"))
 
   version_mutation = JSON.parse(JSON.generate(registration))
   version_mutation["pilot"]["version"] = "1.0.0-rc.6"
@@ -150,15 +208,324 @@ begin
   if ResearchEvidence.validate_interruption(interruption_mutation).empty?
     errors << "interruption record accepted an open collection"
   end
-  if ResearchEvidence.validate_intake_authorization(registration, interruption).empty?
-    errors << "evidence intake remained open during the registered pause"
+  if authorization.nil?
+    if ResearchEvidence.validate_intake_authorization(replacement, registration, interruption, authorization).empty?
+      errors << "evidence intake remained open without an authorization record"
+    end
+  elsif activation_candidate_mode
+    errors.concat(ResearchEvidence.validate_activation_candidate(authorization, replacement))
+  else
+    errors.concat(
+      ResearchEvidence.validate_intake_authorization(
+        replacement,
+        registration,
+        interruption,
+        authorization
+      )
+    )
   end
-  if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
+  if ResearchEvidence.validate_intake_authorization(replacement, registration, interruption_mutation, authorization).empty?
     errors << "evidence intake accepted an open flag without an exact eligible build"
   end
   interruption_mutation["eligible_build"] = registration.fetch("pilot").slice("version", "tag", "commit")
-  if ResearchEvidence.validate_intake_authorization(registration, interruption_mutation).empty?
+  if ResearchEvidence.validate_intake_authorization(replacement, registration, interruption_mutation, authorization).empty?
     errors << "evidence intake accepted an unfrozen open RC4 mutation"
+  end
+
+  replacement_mutation = JSON.parse(JSON.generate(replacement))
+  replacement_mutation["pilot"]["version"] = "1.0.0-rc.6"
+  if ResearchEvidence.validate_replacement_registration(
+    replacement_mutation,
+    registration: registration,
+    interruption: interruption
+  ).empty?
+    errors << "replacement registration accepted a non-RC7 pilot version"
+  end
+  replacement_mutations = {
+    "one-week pilot" => ->(copy) { copy["pilot"]["working_weeks"] = 1 },
+    "earlier eligibility date" => ->(copy) { copy["pilot"]["eligible_observations_on_or_after"] = "2026-08-16" },
+    "post-observation receipts" => ->(copy) { copy["build_manifest"]["receipt_must_precede_first_observation"] = false },
+    "empty opening requirements" => ->(copy) { copy["intake"]["opening_requires"] = [] },
+    "changed archive digest" => lambda do |copy|
+      copy["release"]["archive_sha256"][copy["release"]["archive_sha256"].keys.first] = "0" * 64
+    end
+  }
+  replacement_mutations.each do |label, mutation|
+    copy = JSON.parse(JSON.generate(replacement))
+    mutation.call(copy)
+    if ResearchEvidence.validate_replacement_registration(
+      copy,
+      registration: registration,
+      interruption: interruption
+    ).empty?
+      errors << "replacement registration accepted #{label} mutation"
+    end
+  end
+  rogue_authorization = {
+    "collection_open" => true,
+    "eligible_build" => replacement.fetch("pilot").slice("version", "tag", "commit")
+  }
+  if ResearchEvidence.validate_intake_authorization(
+    replacement,
+    registration,
+    interruption,
+    rogue_authorization
+  ).empty?
+    errors << "evidence intake accepted an unprotected RC7 opening"
+  end
+  replacement_sha256 = Digest::SHA256.hexdigest(JSON.generate(replacement))
+  fake_stage_2_at = "2026-08-17T00:00:00Z"
+  fake_stage_3_on = "2026-08-17"
+  fake_body = "FIXCARD-PILOT-OPEN pilot_id=#{ResearchEvidence::EXPECTED_RC7_PILOT_ID} " \
+              "registration_sha256=#{replacement_sha256} " \
+              "build_commit=#{ResearchEvidence::EXPECTED_REPLACEMENT.fetch('commit')} " \
+              "stage_2_eligible_at=#{fake_stage_2_at} stage_3_eligible_on=#{fake_stage_3_on} " \
+              "nonce=ABCDEFGHIJKLMNOP"
+  fabricated_authorization = {
+    "schema_version" => 1,
+    "event_type" => "collection_opened",
+    "sequence" => 1,
+    "previous_event_sha256" => nil,
+    "pilot_id" => ResearchEvidence::EXPECTED_RC7_PILOT_ID,
+    "registration" => {
+      "commit" => ResearchEvidence::EXPECTED_REPLACEMENT.fetch("commit"),
+      "canonical_json_sha256" => replacement_sha256,
+      "pull_request_number" => 27,
+      "pull_request_id" => 1,
+      "pull_request_url" => "https://github.com/MarinJursic/fixcard/pull/27",
+      "merged_at" => "2026-08-15T00:00:00Z"
+    },
+    "activation_pull_request" => {
+      "number" => 999_999,
+      "id" => 999_999,
+      "url" => "https://github.com/MarinJursic/fixcard/pull/999999",
+      "base_ref" => "main"
+    },
+    "issue" => {
+      "repository" => "MarinJursic/fixcard",
+      "repository_id" => 1_322_107_936,
+      "issue_number" => 5,
+      "issue_id" => 5_054_372_820,
+      "comment_id" => 9_999_999_999,
+      "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-9999999999",
+      "author_login" => "MarinJursic",
+      "author_id" => 50_271_892,
+      "created_at" => "2026-08-15T15:00:00Z",
+      "updated_at" => "2026-08-15T15:00:00Z",
+      "body" => fake_body,
+      "body_sha256" => Digest::SHA256.hexdigest(fake_body)
+    },
+    "authorized_stages" => %w[milestone_0 stage_1 stage_2 stage_3],
+    "eligibility" => {
+      "stage_2_eligible_at" => fake_stage_2_at,
+      "stage_3_eligible_on" => fake_stage_3_on
+    },
+    "build" => {
+      "pilot_id" => ResearchEvidence::EXPECTED_RC7_PILOT_ID,
+      "version" => "1.0.0-rc.7",
+      "tag" => "v1.0.0-rc.7",
+      "commit" => ResearchEvidence::EXPECTED_REPLACEMENT.fetch("commit"),
+      "build_manifest_sha256" => ResearchEvidence::EXPECTED_RC7_BUILD_MANIFEST_SHA256,
+      "homebrew_formula_commit" => "71f00d5574ab8fe6e06c224df0219752ddd44370"
+    },
+    "public_form_sha256" => "280002611023b17bcf457381e769b9102950af39cefcff8c9911784656e80032",
+    "eligible_evidence_at_opening" => ResearchEvidence::ELIGIBLE_EVIDENCE_KEYS.to_h { |key| [key, 0] },
+    "stable_release_allowed" => false
+  }
+  fabricated_errors = ResearchEvidence.validate_activation_record(fabricated_authorization, replacement)
+  unless fabricated_errors.any? { |error| error.include?("does not contain the replacement registration") }
+    errors << "activation accepted a fabricated GitHub record or an ancestor without the preregistration"
+  end
+  activation_pr_number = fabricated_authorization.dig("activation_pull_request", "number")
+  unless ResearchEvidence.activation_candidate_event?(
+    fabricated_authorization,
+    event_name: "pull_request",
+    event: { "pull_request" => { "number" => activation_pr_number } }
+  )
+    errors << "activation candidate event did not recognize its exact pull request"
+  end
+  if ResearchEvidence.activation_candidate_event?(
+    fabricated_authorization,
+    event_name: "pull_request",
+    event: { "pull_request" => { "number" => activation_pr_number + 1 } }
+  )
+    errors << "unrelated pull request was mistaken for the activation candidate"
+  end
+  if ResearchEvidence.activation_candidate_event?(
+    fabricated_authorization,
+    event_name: "push",
+    event: { "number" => activation_pr_number }
+  )
+    errors << "non-pull-request event was mistaken for the activation candidate"
+  end
+  valid_boundary_errors = ResearchEvidence.validate_activation_boundaries(
+    stage_2_value: "2026-08-17T00:00:00Z",
+    stage_3_value: "2026-08-17",
+    comment_value: "2026-08-15T15:00:00Z",
+    merged_value: "2026-08-16T12:00:00Z",
+    not_before_value: "2026-08-17"
+  )
+  errors << "activation boundary control failed: #{valid_boundary_errors.join('; ')}" unless valid_boundary_errors.empty?
+  pre_not_before_errors = ResearchEvidence.validate_activation_boundaries(
+    stage_2_value: "2026-08-16T23:59:59Z",
+    stage_3_value: "2026-08-17",
+    comment_value: "2026-08-15T15:00:00Z",
+    merged_value: "2026-08-16T12:00:00Z",
+    not_before_value: "2026-08-17"
+  )
+  unless pre_not_before_errors.any? { |error| error.include?("predates the registered not-before") }
+    errors << "activation accepted a Stage 2 boundary before the registered not-before date"
+  end
+  same_day_stage_3_errors = ResearchEvidence.validate_activation_boundaries(
+    stage_2_value: "2026-08-17T12:00:01Z",
+    stage_3_value: "2026-08-17",
+    comment_value: "2026-08-17T10:00:00Z",
+    merged_value: "2026-08-17T12:00:00Z",
+    not_before_value: "2026-08-17"
+  )
+  unless same_day_stage_3_errors.any? { |error| error.include?("strictly after") }
+    errors << "activation accepted same-day Stage 3 evidence after opening"
+  end
+  candidate_as_of = Time.iso8601("2026-08-15T12:00:00Z")
+  candidate_boundary_errors = ResearchEvidence.validate_activation_candidate_boundaries(
+    stage_2_value: "2026-08-17T12:00:00Z",
+    stage_3_value: "2026-08-18",
+    comment_value: "2026-08-15T10:00:00Z",
+    not_before_value: "2026-08-17",
+    as_of: candidate_as_of
+  )
+  errors << "activation candidate lead-time control failed: #{candidate_boundary_errors.join('; ')}" unless
+    candidate_boundary_errors.empty?
+  short_lead_errors = ResearchEvidence.validate_activation_candidate_boundaries(
+    stage_2_value: "2026-08-16T12:00:00Z",
+    stage_3_value: "2026-08-17",
+    comment_value: "2026-08-15T10:00:00Z",
+    not_before_value: "2026-08-17",
+    as_of: candidate_as_of
+  )
+  unless short_lead_errors.any? { |error| error.include?("merge lead") }
+    errors << "activation candidate accepted a boundary without conservative merge lead time"
+  end
+
+  rc7_stage_2_values = ResearchEvidence::RC7_STAGE_2_HEADERS.map do |header|
+    {
+      "pilot_id" => ResearchEvidence::EXPECTED_RC7_PILOT_ID,
+      "build_manifest_sha256" => ResearchEvidence::EXPECTED_RC7_BUILD_MANIFEST_SHA256,
+      "observed_at" => "#{eligible_on.iso8601}T00:00:00Z",
+      "participant_alias" => "P001",
+      "card_alias" => "C001",
+      "fixcard_version" => exact_version,
+      "controlled_variants" => "0",
+      "correct_rank_one" => "0",
+      "maintainer_decision" => "not_reviewed",
+      "card_committed" => "false"
+    }.fetch(header, "")
+  end
+  rc7_stage_2 = CSV::Table.new([
+    CSV::Row.new(ResearchEvidence::RC7_STAGE_2_HEADERS, rc7_stage_2_values)
+  ])
+  eligible_at = Time.utc(eligible_on.year, eligible_on.month, eligible_on.day)
+  as_of = eligible_at + (7 * 24 * 60 * 60)
+  exact_rc7_stage_2_errors = ResearchEvidence.validate_rc7_stage2_table(
+    rc7_stage_2,
+    eligible_at: eligible_at,
+    as_of: as_of
+  )
+  errors << "RC7 Stage 2 exact identity control failed: #{exact_rc7_stage_2_errors.join('; ')}" unless exact_rc7_stage_2_errors.empty?
+
+  wrong_manifest = CSV::Table.new([rc7_stage_2.first.dup])
+  wrong_manifest.first["build_manifest_sha256"] = "0" * 64
+  if ResearchEvidence.validate_rc7_stage2_table(wrong_manifest, eligible_at: eligible_at, as_of: as_of).empty?
+    errors << "RC7 Stage 2 accepted a same-version row with the wrong build manifest"
+  end
+
+  pre_boundary = CSV::Table.new([rc7_stage_2.first.dup])
+  pre_boundary.first["observed_at"] = "#{(eligible_on - 1).iso8601}T23:59:59Z"
+  if ResearchEvidence.validate_rc7_stage2_table(pre_boundary, eligible_at: eligible_at, as_of: as_of).empty?
+    errors << "RC7 Stage 2 accepted a pre-boundary observation"
+  end
+
+  offset_timestamp = CSV::Table.new([rc7_stage_2.first.dup])
+  offset_timestamp.first["observed_at"] = "#{eligible_on.iso8601}T01:00:00+01:00"
+  if ResearchEvidence.validate_rc7_stage2_table(offset_timestamp, eligible_at: eligible_at, as_of: as_of).empty?
+    errors << "RC7 Stage 2 accepted a noncanonical timestamp"
+  end
+
+  future_timestamp = CSV::Table.new([rc7_stage_2.first.dup])
+  future_timestamp.first["observed_at"] = "2099-01-01T00:00:00Z"
+  if ResearchEvidence.validate_rc7_stage2_table(future_timestamp, eligible_at: eligible_at, as_of: as_of).empty?
+    errors << "RC7 Stage 2 accepted a future observation"
+  end
+
+  # CSV::Row#dup shares its backing field array on supported Ruby versions;
+  # restore the exact control row after the independent mutations above.
+  rc7_stage_2.first["pilot_id"] = ResearchEvidence::EXPECTED_RC7_PILOT_ID
+  rc7_stage_2.first["build_manifest_sha256"] = ResearchEvidence::EXPECTED_RC7_BUILD_MANIFEST_SHA256
+  rc7_stage_2.first["observed_at"] = eligible_at.iso8601
+
+  build_manifest = ResearchEvidence.load_strict_json_object(
+    ResearchEvidence::RC7_BUILD_MANIFEST_PATH,
+    "RC7 build manifest"
+  )
+  archive = build_manifest.dig("release", "assets").find { |asset| asset["name"].end_with?(".tar.gz") }
+  receipt_values = ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS.map do |header|
+    {
+      "pilot_id" => ResearchEvidence::EXPECTED_RC7_PILOT_ID,
+      "build_manifest_sha256" => ResearchEvidence::EXPECTED_RC7_BUILD_MANIFEST_SHA256,
+      "installation_alias" => "I001",
+      "participant_alias" => "P001",
+      "repository_alias" => "R001",
+      "install_method" => "archive",
+      "artifact_name" => archive.fetch("name"),
+      "artifact_sha256" => archive.fetch("sha256"),
+      "fixcard_version_output" => "fixcard #{exact_version}",
+      "fix_version_output" => "fix #{exact_version}",
+      "verified_at" => eligible_at.iso8601,
+      "verifier_alias" => "V001"
+    }.fetch(header, "")
+  end
+  rc7_receipts = CSV::Table.new([
+    CSV::Row.new(ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS, receipt_values)
+  ])
+  receipt_errors = ResearchEvidence.validate_rc7_installation_receipts(
+    rc7_receipts,
+    eligible_at: eligible_at,
+    as_of: as_of
+  )
+  errors << "RC7 installation-receipt control failed: #{receipt_errors.join('; ')}" unless receipt_errors.empty?
+  stage_2_receipt_errors = ResearchEvidence.validate_rc7_stage2_receipt_coverage(rc7_stage_2, rc7_receipts)
+  errors << "RC7 Stage 2 receipt coverage failed: #{stage_2_receipt_errors.join('; ')}" unless stage_2_receipt_errors.empty?
+  duplicate_participant_receipts = deep_copy_csv.call(rc7_receipts)
+  second_receipt = duplicate_participant_receipts.first.fields.dup
+  second_receipt[ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS.index("installation_alias")] = "I002"
+  second_receipt[ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS.index("repository_alias")] = "R002"
+  duplicate_participant_receipts << CSV::Row.new(ResearchEvidence::RC7_INSTALLATION_RECEIPT_HEADERS, second_receipt)
+  if ResearchEvidence.validate_rc7_stage2_receipt_coverage(rc7_stage_2, duplicate_participant_receipts).empty?
+    errors << "RC7 Stage 2 accepted more than one receipt for a participant"
+  end
+
+  late_receipt = deep_copy_csv.call(rc7_receipts)
+  late_receipt.first["verified_at"] = (eligible_at + 60).iso8601
+  if ResearchEvidence.validate_rc7_stage2_receipt_coverage(rc7_stage_2, late_receipt).empty?
+    errors << "RC7 Stage 2 accepted a receipt created after observation"
+  end
+  wrong_receipt_digest = deep_copy_csv.call(rc7_receipts)
+  wrong_receipt_digest.first["artifact_sha256"] = "0" * 64
+  if ResearchEvidence.validate_rc7_installation_receipts(
+    wrong_receipt_digest,
+    eligible_at: eligible_at,
+    as_of: as_of
+  ).empty?
+    errors << "RC7 installation receipt accepted the wrong archive digest"
+  end
+  pre_activation_receipt = deep_copy_csv.call(rc7_receipts)
+  pre_activation_receipt.first["verified_at"] = (eligible_at - 1).iso8601
+  if ResearchEvidence.validate_rc7_installation_receipts(
+    pre_activation_receipt,
+    eligible_at: eligible_at,
+    as_of: as_of
+  ).empty?
+    errors << "RC7 installation receipt accepted pre-activation verification"
   end
 
   stage_2 = tables["stage-2-observations.csv"]
@@ -303,6 +670,41 @@ begin
         overrides.fetch(header, defaults.fetch(header, ""))
       end
       CSV::Table.new([CSV::Row.new(headers, values)])
+    end
+
+    receipt_stage_3 = build_row.call(
+      exact_version,
+      "observation_start" => eligible_on.iso8601,
+      "observation_end" => (eligible_on + 6).iso8601
+    )
+    membership_headers = ResearchEvidence::STAGE_3_USER_REUSE_HEADERS
+    membership_table = CSV::Table.new([
+      CSV::Row.new(membership_headers, ["P001", "R001", exact_version, "true", "false"])
+    ])
+    exact_receipt_coverage = ResearchEvidence.validate_rc7_receipt_coverage(
+      receipt_stage_3,
+      membership_table,
+      rc7_receipts
+    )
+    errors << "RC7 Stage 3 receipt coverage control failed: #{exact_receipt_coverage.join('; ')}" unless exact_receipt_coverage.empty?
+    late_stage_3_receipt = deep_copy_csv.call(rc7_receipts)
+    late_stage_3_receipt.first["verified_at"] = (eligible_at + 1).iso8601
+    if ResearchEvidence.validate_rc7_receipt_coverage(
+      receipt_stage_3,
+      membership_table,
+      late_stage_3_receipt
+    ).empty?
+      errors << "RC7 Stage 3 accepted a receipt after the first observation date"
+    end
+    unrelated_receipt = deep_copy_csv.call(rc7_receipts)
+    unrelated_receipt.first["participant_alias"] = "P999"
+    unrelated_receipt.first["repository_alias"] = "R999"
+    if ResearchEvidence.validate_rc7_receipt_coverage(
+      receipt_stage_3,
+      nil,
+      unrelated_receipt
+    ).empty?
+      errors << "RC7 Stage 3 accepted a receipt for an unrelated repository"
     end
 
     exact_errors = ResearchEvidence.validate_stage3_table(
@@ -547,29 +949,60 @@ begin
     errors << "Stage 3 pre-registration date mutation was accepted" if early_errors.empty?
   end
 
+  closed_state = authorization.nil?
   dogfood = File.read(ROOT.join("docs", "dogfood.md"), encoding: "UTF-8")
-  errors << "dogfood.md: must name exact pilot build #{exact_version}" unless dogfood.include?("`#{exact_version}`")
   errors << "dogfood.md: must not direct pilots to the newest candidate" if dogfood.match?(/newest release candidate/i)
   dogfood_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/dogfood.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/dogfood.md")
-  errors << "dogfood.md: must state that collection is paused" unless dogfood.start_with?(dogfood_pause_prefix)
+  errors << "dogfood.md: closed state must state that collection is paused" if closed_state && !dogfood.start_with?(dogfood_pause_prefix)
+
+  rc7_dogfood = File.read(ROOT.join("docs", "dogfood-rc7.md"), encoding: "UTF-8")
+  errors << "dogfood-rc7.md: must name exact pilot build #{exact_version}" unless rc7_dogfood.include?("`#{exact_version}`")
+  errors << "dogfood-rc7.md: closed state must say collection is closed" if closed_state && !rc7_dogfood.include?("**Collection is closed.**")
 
   operations = File.read(ROOT.join("docs", "research-operations.md"), encoding: "UTF-8")
   operations_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/research-operations.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/research-operations.md")
-  errors << "research-operations.md: must state that collection is paused" unless operations.start_with?(operations_pause_prefix)
+  errors << "research-operations.md: closed state must say collection is paused" if closed_state && !operations.start_with?(operations_pause_prefix)
 
   validation = File.read(ROOT.join("docs", "validation.md"), encoding: "UTF-8")
   validation_pause_prefix = ResearchEvidence::PAUSE_HEADINGS.fetch("docs/validation.md") + ResearchEvidence::PAUSE_BANNERS.fetch("docs/validation.md")
-  errors << "validation.md: must state that collection and intake are paused" unless validation.start_with?(validation_pause_prefix)
+  errors << "validation.md: closed state must say collection and intake are paused" if closed_state && !validation.start_with?(validation_pause_prefix)
 
   results = File.read(ROOT.join("docs", "validation-results.md"), encoding: "UTF-8")
   errors << "validation-results.md: must name exact pilot build #{exact_version}" unless results.include?("`#{exact_version}`")
-  errors << "validation-results.md: must state that public intake is disabled" unless results.include?("public validation intake form is disabled")
+  errors << "validation-results.md: must explain activation-bound form authority" unless
+    results.include?("public validation form is authoritative only when it is installed")
 
   research_readme = File.read(ROOT.join("research", "README.md"), encoding: "UTF-8")
-  errors << "research/README.md: must state that collection is paused" unless research_readme.include?("No build is currently eligible")
+  errors << "research/README.md: closed state must say RC7 is not eligible" if closed_state && !research_readme.include?("RC7 is registered but not yet eligible")
 
   form_path = ROOT.join(".github", "ISSUE_TEMPLATE", "validation-report.yml")
-  errors << "validation-report.yml: paused collection must not expose an active submission form" if form_path.exist?
+  errors << "validation-report.yml: closed collection must not expose an active submission form" if closed_state && form_path.exist?
+  dormant_form = ROOT.join("research", "pilots", "rc7", "validation-report.yml")
+  errors << "RC7 dormant validation form is missing" unless dormant_form.file?
+
+  open_banners = ResearchEvidence.load_strict_json_object(
+    ResearchEvidence::OPEN_BANNERS_PATH,
+    "RC7 open-banner snapshot"
+  )
+  banner_paths = Array(open_banners["documents"]).map { |entry| entry["path"] }
+  expected_banner_paths = %w[
+    README.md research/README.md docs/validation.md docs/research-operations.md
+    docs/dogfood.md docs/dogfood-rc7.md docs/validation-results.md
+  ]
+  errors << "RC7 open-banner document set differs" unless banner_paths.sort == expected_banner_paths.sort
+  Array(open_banners["documents"]).each do |entry|
+    current = ROOT.join(entry["path"].to_s)
+    closed_prefix = Array(entry["closed_lines"]).join("\n") + "\n"
+    open_prefix = Array(entry["open_lines"]).join("\n") + "\n"
+    errors << "RC7 banner snapshot has identical closed/open text for #{entry['path']}" if closed_prefix == open_prefix
+    expected_prefix = closed_state ? closed_prefix : open_prefix
+    errors << "RC7 #{closed_state ? 'closed' : 'open'} banner does not match #{entry['path']}" unless
+      current.file? && current.binread.start_with?(expected_prefix.b)
+  end
+  if !closed_state
+    errors << "active RC7 validation form differs from dormant snapshot" unless
+      form_path.file? && !form_path.symlink? && dormant_form.file? && form_path.binread == dormant_form.binread
+  end
 
   Tempfile.create(["malformed-stage-3", ".csv"]) do |file|
     file.write("repository_alias,week\n\"unterminated")
@@ -590,6 +1023,47 @@ begin
       errors << "non-object registration mutation was accepted"
     rescue ArgumentError
       nil
+    end
+  end
+
+  Tempfile.create(["duplicate-key-registration", ".json"]) do |file|
+    file.write('{"schema_version":1,"schema_version":2}')
+    file.flush
+    begin
+      ResearchEvidence.load_replacement_registration(Pathname.new(file.path))
+      errors << "replacement registration accepted a duplicate JSON key"
+    rescue ArgumentError
+      nil
+    end
+  end
+
+  Tempfile.create(["replacement-target", ".json"]) do |file|
+    file.write('{}')
+    file.flush
+    link = Pathname.new("#{file.path}.link")
+    File.symlink(file.path, link)
+    begin
+      ResearchEvidence.load_replacement_registration(link)
+      errors << "replacement registration accepted a symlink"
+    rescue ArgumentError
+      nil
+    ensure
+      link.delete if link.exist? || link.symlink?
+    end
+  end
+
+  Tempfile.create(["evidence-target", ".csv"]) do |file|
+    file.write("repository_alias,week\n")
+    file.flush
+    link = Pathname.new("#{file.path}.link")
+    File.symlink(file.path, link)
+    begin
+      ResearchEvidence.read_csv(link)
+      errors << "evidence loader accepted a symlink"
+    rescue ArgumentError
+      nil
+    ensure
+      link.delete if link.exist? || link.symlink?
     end
   end
 rescue ArgumentError, KeyError => e

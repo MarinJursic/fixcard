@@ -1,5 +1,9 @@
 # Pre-pilot research protocol
 
+> [!IMPORTANT]
+> The dogfood link in the frozen body below is historical RC4 material. Current
+> coordinators must use the [RC7 operating snapshot](dogfood-rc7.md).
+
 Stable 1.0 requires evidence that the problem and workflow are real, not only a
 well-tested implementation. This protocol covers the two stages that precede
 the four-week [dogfood pilot](dogfood.md).

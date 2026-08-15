@@ -1,11 +1,14 @@
 # Validation plan
 
 > [!CAUTION]
-> **Stage 3 collection is paused.** No Fixcard build is currently eligible,
-> and the public validation intake form is disabled. The staged plan below
-> remains frozen, but observation and submission can restart only after a
-> protected replacement preregistration and a later explicit opening comment
-> in issue #5. No evidence from the interrupted RC4 treatment carries forward.
+> **All validation collection is paused.** Milestone 0 and Stage 1 are
+> build-independent; Stage 2 and Stage 3 are bound to RC7. None is open, and
+> the public intake form is disabled. Observation and submission can restart
+> only for stages explicitly named after the 2026-08-17 not-before date, a
+> later opening comment in issue #5, and a protected activation record. No RC4
+> evidence carries forward.
+> Use the [current RC7 operating snapshot](dogfood-rc7.md); the RC4 dogfood body
+> is historical.
 
 Fixcard separates engineering verification from product validation.
 

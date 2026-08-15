@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "event_type": "collection_opened",
+  "event_sequence": 1,
+  "previous_event_sha256": null,
+  "required_top_level_keys": [
+    "schema_version",
+    "event_type",
+    "sequence",
+    "previous_event_sha256",
+    "pilot_id",
+    "registration",
+    "activation_pull_request",
+    "issue",
+    "authorized_stages",
+    "eligibility",
+    "build",
+    "public_form_sha256",
+    "eligible_evidence_at_opening",
+    "stable_release_allowed"
+  ],
+  "authorized_stages": [
+    "milestone_0",
+    "stage_1",
+    "stage_2",
+    "stage_3"
+  ],
+  "issue": {
+    "repository": "MarinJursic/fixcard",
+    "repository_id": 1322107936,
+    "issue_number": 5,
+    "issue_id": 5054372820,
+    "author_login": "MarinJursic",
+    "author_id": 50271892,
+    "comment_must_be_unedited": true,
+    "comment_body_grammar": "FIXCARD-PILOT-OPEN pilot_id=<pilot_id> registration_sha256=<sha256> build_commit=<sha1> stage_2_eligible_at=<RFC3339Z> stage_3_eligible_on=<YYYY-MM-DD> nonce=<16 uppercase alphanumeric>"
+  },
+  "activation_pull_request": {
+    "required_keys": [
+      "number",
+      "id",
+      "url",
+      "base_ref"
+    ],
+    "base_ref": "main",
+    "must_be_merged_before_intake_opens": true,
+    "merge_commit_and_merged_at_are_derived_from_github_not_self_reported": true
+  },
+  "registration_binding": {
+    "required_keys": [
+      "commit",
+      "canonical_json_sha256",
+      "pull_request_number",
+      "pull_request_id",
+      "pull_request_url",
+      "merged_at"
+    ],
+    "merge_commit_must_contain_exact_registration": true,
+    "opening_comment_must_be_later_than_registration_merge": true
+  },
+  "eligibility": {
+    "registered_not_before": "2026-08-17",
+    "stage_2_must_be_canonical_utc_rfc3339": true,
+    "stage_2_must_be_later_than_comment_and_activation_merge": true,
+    "stage_3_must_be_strictly_after_comment_activation_merge_and_registered_minimum": true,
+    "candidate_stage_2_merge_lead_hours_minimum": 48,
+    "candidate_stage_3_merge_lead_utc_dates_minimum": 3,
+    "pre_boundary_and_future_observations_rejected": true
+  },
+  "public_form_sha256": "280002611023b17bcf457381e769b9102950af39cefcff8c9911784656e80032",
+  "activation": {
+    "registration_and_open_event_same_pull_request_forbidden": true,
+    "registration_commit_must_be_ancestor_of_activation_base": true,
+    "activation_must_merge_to_protected_main": true,
+    "network_or_api_verification_failure_closes_intake": true,
+    "malformed_missing_duplicate_gapped_or_conflicting_event_closes_intake": true,
+    "active_form_must_equal_dormant_snapshot": true,
+    "public_open_banners_must_equal_preregistered_snapshots": true,
+    "opening_comment_must_match_live_github_api": true,
+    "activation_pull_request_must_match_live_github_api": true,
+    "activation_merge_commit_must_contain_exact_authorization": true,
+    "registration_commit_must_contain_exact_registration_and_validator_tree": true,
+    "release_and_formula_metadata_must_be_reverified_before_activation": true
+  }
+}

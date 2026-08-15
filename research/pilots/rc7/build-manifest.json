@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "repository": "MarinJursic/fixcard",
+  "version": "1.0.0-rc.7",
+  "tag": "v1.0.0-rc.7",
+  "commit": "165ef5cd4790002516de9c327d634d342842288d",
+  "release": {
+    "id": 371070518,
+    "url": "https://github.com/MarinJursic/fixcard/releases/tag/v1.0.0-rc.7",
+    "created_at": "2026-08-15T14:32:20Z",
+    "published_at": "2026-08-15T14:35:54Z",
+    "immutable": false,
+    "asset_count": 8,
+    "assets": [
+      {
+        "id": 515772215,
+        "name": "SHA256SUMS",
+        "size": 690,
+        "sha256": "fa1c3e360c90afd32d367c1880afa88fd19cdb98554fbe6be40ef73f57fb0482"
+      },
+      {
+        "id": 515772219,
+        "name": "fixcard-1.0.0-rc.7-aarch64-apple-darwin.tar.gz",
+        "size": 2312992,
+        "sha256": "c56714ac4ef563d56d1b5e12c78b2df5567a4f3006907f9ff1ff8c37f8478756"
+      },
+      {
+        "id": 515772220,
+        "name": "fixcard-1.0.0-rc.7-aarch64-unknown-linux-gnu.tar.gz",
+        "size": 2381448,
+        "sha256": "7c23ecde073df3f62f27da7cefd1e67ba560a4bf777f6aee850d6e983e8fa960"
+      },
+      {
+        "id": 515772217,
+        "name": "fixcard-1.0.0-rc.7-x86_64-apple-darwin.tar.gz",
+        "size": 2473100,
+        "sha256": "163973c67d0cac9ecff84f60b6f35432da97e894cbda8d23fb0f50a465979582"
+      },
+      {
+        "id": 515772218,
+        "name": "fixcard-1.0.0-rc.7-x86_64-pc-windows-msvc.zip",
+        "size": 2592070,
+        "sha256": "f980346e1e45ab59a9d26f06f7f3c36dd494654e0a8bcb6e0eb7539764be44f5"
+      },
+      {
+        "id": 515772223,
+        "name": "fixcard-1.0.0-rc.7-x86_64-unknown-linux-gnu.tar.gz",
+        "size": 2557933,
+        "sha256": "ac0eb5e6f3567af86085fb35a773f8cc7494ba691c43db5426da14e91f2cb238"
+      },
+      {
+        "id": 515772225,
+        "name": "fixcard-1.0.0-rc.7-x86_64-unknown-linux-musl.tar.gz",
+        "size": 2689559,
+        "sha256": "91043534d1501e0eb5e41552e6a0196e4207eca73db323ce2ae1f83a80909966"
+      },
+      {
+        "id": 515772226,
+        "name": "fixcard.cdx.json",
+        "size": 120515,
+        "sha256": "a9192b21e7c2115210e848719334deec90daaf50da917b50d619ec2eb6e86dd6"
+      }
+    ]
+  },
+  "release_workflow": {
+    "id": 31890187276,
+    "attempt": 1,
+    "workflow_id": 326476368,
+    "path": ".github/workflows/release.yml",
+    "event": "push",
+    "head_sha": "165ef5cd4790002516de9c327d634d342842288d",
+    "conclusion": "success",
+    "url": "https://github.com/MarinJursic/fixcard/actions/runs/31890187276"
+  },
+  "attestations": {
+    "repository": "MarinJursic/fixcard",
+    "signer_workflow": "MarinJursic/fixcard/.github/workflows/release.yml",
+    "deny_self_hosted_runners": true,
+    "slsa_provenance_subjects_verified": 6,
+    "cyclonedx_subjects_verified": 6
+  },
+  "homebrew": {
+    "repository": "MarinJursic/homebrew-tap",
+    "formula_commit": "71f00d5574ab8fe6e06c224df0219752ddd44370",
+    "formula_url": "https://raw.githubusercontent.com/MarinJursic/homebrew-tap/71f00d5574ab8fe6e06c224df0219752ddd44370/Formula/fixcard.rb",
+    "formula_sha256": "f104d882f611f5a01769499bc8665f28d7a6bd944d4f8f8ad2dcf75d40038b0f",
+    "workflow_id": 31890675255,
+    "workflow_url": "https://github.com/MarinJursic/homebrew-tap/actions/runs/31890675255",
+    "verified_platforms": [
+      "macos-arm64",
+      "macos-x86_64",
+      "linux-arm64",
+      "linux-x86_64"
+    ]
+  },
+  "verification_policy": {
+    "release_is_mutable": true,
+    "reverify_asset_ids_sizes_and_sha256_before_activation": true,
+    "reverify_attestation_subject_repository_signer_ref_and_predicate_before_activation": true,
+    "require_exact_archive_or_formula_receipt_per_stage_3_participant_repository_membership": true,
+    "require_exact_archive_or_formula_receipt_per_stage_2_participant": true,
+    "receipt_must_precede_first_observation": true
+  }
+}
