@@ -1,10 +1,10 @@
 # Research operations kit
 
-> [!CAUTION]
-> **Collection is paused. RC7 is registered but not yet eligible.** The
-> templates remain public so the frozen method is auditable, but do not enter
-> observations or submit evidence until issue #5 explicitly opens named stages
-> and a protected activation record takes effect.
+> [!IMPORTANT]
+> **The protected RC7 activation is installed. Collection is open only when the
+> evidence validator reports `OPEN`.** Use only post-boundary observations and the exact
+> registered templates. Opening collection satisfies no gate and does not
+> authorize stable 1.0.
 
 This directory contains blank, privacy-minimizing templates for Fixcard's
 pre-pilot research and release-candidate pilot. When collection is explicitly

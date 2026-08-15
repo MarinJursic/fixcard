@@ -1,12 +1,11 @@
 # Validation plan
 
-> [!CAUTION]
-> **All validation collection is paused.** Milestone 0 and Stage 1 are
-> build-independent; Stage 2 and Stage 3 are bound to RC7. None is open, and
-> the public intake form is disabled. Observation and submission can restart
-> only for stages explicitly named after the 2026-08-17 not-before date, a
-> later opening comment in issue #5, and a protected activation record. No RC4
-> evidence carries forward.
+> [!IMPORTANT]
+> **The protected RC7 activation is installed for Milestone 0 and Stages 1–3.**
+> Collection is open only when the evidence validator reports `OPEN`. Stage 2
+> and Stage 3 require the exact RC7
+> build and post-boundary receipts; no earlier or other-build observation is
+> eligible. Opening collection satisfies no gate and stable 1.0 remains blocked.
 > Use the [current RC7 operating snapshot](dogfood-rc7.md); the RC4 dogfood body
 > is historical.
 

@@ -1,14 +1,12 @@
 # Research operations guide
 
-> [!CAUTION]
-> **Collection is paused.** RC7 is now the protected replacement
-> preregistration, not an authorization to collect. Observation can start only
-> after the 2026-08-17 not-before date, a later explicit opening comment in
-> issue #5, and a protected intake-authorization record. No RC4 evidence
-> carries forward. The body below preserves the historical protocol; use the
-> [RC7 operating snapshot](dogfood-rc7.md) for current treatment instructions
-> after activation. See the
-> [replacement registration](../research/pilot-replacement-registration.json).
+> [!IMPORTANT]
+> **The protected RC7 activation is installed for Milestone 0 and Stages 1–3.**
+> Collection is open only when the evidence validator reports `OPEN`. No evidence
+> carries forward. Stage 2 and
+> Stage 3 must follow the exact RC7 operating snapshot and start only at their
+> recorded boundaries. Opening collection satisfies no gate and stable 1.0
+> remains blocked. See the [RC7 operating snapshot](dogfood-rc7.md).
 
 This guide turns the [pre-pilot protocol](research-study.md) and
 [release-candidate pilot](dogfood.md) into a coordinator-ready procedure. It

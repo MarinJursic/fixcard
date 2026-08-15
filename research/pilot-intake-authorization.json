@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "event_type": "collection_opened",
+  "sequence": 1,
+  "previous_event_sha256": null,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "registration": {
+    "commit": "de3d745f3d307e6df875cbd03afa56b115aa022b",
+    "canonical_json_sha256": "f09face4eabb46cf218888fa7cfcdc7d2997b7f7b5290fa0d4992beeffee4fad",
+    "pull_request_number": 28,
+    "pull_request_id": 4286896060,
+    "pull_request_url": "https://github.com/MarinJursic/fixcard/pull/28",
+    "merged_at": "2026-08-15T16:24:36Z"
+  },
+  "activation_pull_request": {
+    "number": 31,
+    "id": 4287106713,
+    "url": "https://github.com/MarinJursic/fixcard/pull/31",
+    "base_ref": "main"
+  },
+  "issue": {
+    "repository": "MarinJursic/fixcard",
+    "repository_id": 1322107936,
+    "issue_number": 5,
+    "issue_id": 5054372820,
+    "comment_id": 5303395464,
+    "comment_url": "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303395464",
+    "author_login": "MarinJursic",
+    "author_id": 50271892,
+    "created_at": "2026-08-15T17:28:17Z",
+    "updated_at": "2026-08-15T17:28:17Z",
+    "body": "FIXCARD-PILOT-OPEN pilot_id=fixcard-rc7-2026-08-15 registration_sha256=f09face4eabb46cf218888fa7cfcdc7d2997b7f7b5290fa0d4992beeffee4fad build_commit=165ef5cd4790002516de9c327d634d342842288d stage_2_eligible_at=2026-08-22T00:00:00Z stage_3_eligible_on=2026-08-22 nonce=D5G8J2L4N7Q9S3V6",
+    "body_sha256": "d7c7c45ffdc7d745d666755e330e3612666b9f82c2d6be2f5c1b21187d5e8dc5"
+  },
+  "authorized_stages": [
+    "milestone_0",
+    "stage_1",
+    "stage_2",
+    "stage_3"
+  ],
+  "eligibility": {
+    "stage_2_eligible_at": "2026-08-22T00:00:00Z",
+    "stage_3_eligible_on": "2026-08-22"
+  },
+  "build": {
+    "pilot_id": "fixcard-rc7-2026-08-15",
+    "version": "1.0.0-rc.7",
+    "tag": "v1.0.0-rc.7",
+    "commit": "165ef5cd4790002516de9c327d634d342842288d",
+    "build_manifest_sha256": "f18abc931e870a3a934877b4d33611e8f84190f2e9d765335885dde0d1fa7987",
+    "homebrew_formula_commit": "71f00d5574ab8fe6e06c224df0219752ddd44370"
+  },
+  "public_form_sha256": "280002611023b17bcf457381e769b9102950af39cefcff8c9911784656e80032",
+  "eligible_evidence_at_opening": {
+    "permissioned_second_reviewed_real_pairs": 0,
+    "stage_1_recruited_participants": 0,
+    "stage_1_completed_two_week_diaries": 0,
+    "stage_2_real_card_observations": 0,
+    "stage_3_repositories": 0,
+    "stage_3_repository_weeks": 0
+  },
+  "stable_release_allowed": false
+}
