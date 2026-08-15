@@ -168,7 +168,8 @@ begin
   else
     amendment_structure_errors = ResearchEvidence.validate_validator_amendment_structure(
       validator_amendment,
-      validator_v2
+      validator_v2,
+      check_files: false
     )
     errors << "RC7 validator amendment control failed: #{amendment_structure_errors.join('; ')}" unless
       amendment_structure_errors.empty?
@@ -379,19 +380,19 @@ begin
     end
 
     merged_amendment = {
-      "number" => 29,
-      "id" => ResearchEvidence::VALIDATOR_AMENDMENT_PR["id"],
-      "html_url" => ResearchEvidence::VALIDATOR_AMENDMENT_PR["url"],
+      "number" => 30,
+      "id" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["id"],
+      "html_url" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["url"],
       "state" => "closed",
       "merged_at" => "2026-08-16T12:00:00Z",
       "merge_commit_sha" => "c" * 40,
       "base" => {
         "ref" => "main",
-        "repo" => { "id" => ResearchEvidence::VALIDATOR_AMENDMENT_PR["repository_id"] }
+        "repo" => { "id" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["repository_id"] }
       }
     }
     old_notice_errors = ResearchEvidence.validate_fresh_opening_notice(
-      comment_id: ResearchEvidence::VOIDED_OPENING_NOTICE["comment_id"],
+      comment_id: ResearchEvidence::VOIDED_OPENING_NOTICE_2["comment_id"],
       created_at: Time.iso8601("2026-08-17T00:00:00Z"),
       amendment_pull: merged_amendment
     )
@@ -412,6 +413,187 @@ begin
       amendment_pull: merged_amendment
     )
     errors << "validator amendment rejected a fresh later opening notice" unless fresh_notice_errors.empty?
+  end
+
+  validator_amendment_2 = ResearchEvidence.load_validator_amendment_2
+  validator_v3 = ResearchEvidence.load_validator_manifest_v3
+  if validator_amendment_2.nil? || validator_v3.nil?
+    errors << "RC7 validator amendment 2 or v3 manifest is missing"
+  else
+    amendment_2_structure_errors = ResearchEvidence.validate_validator_amendment_2_structure(
+      validator_amendment_2,
+      validator_v3
+    )
+    errors << "RC7 validator amendment 2 control failed: #{amendment_2_structure_errors.join('; ')}" unless
+      amendment_2_structure_errors.empty?
+    {
+      "open collection" => ->(copy) { copy["collection_open"] = true },
+      "nonzero evidence" => lambda do |copy|
+        copy["eligible_evidence_at_amendment"]["stage_2_real_card_observations"] = 1
+      end,
+      "changed predecessor" => lambda do |copy|
+        copy["historical_validator_amendment"]["commit"] = "0" * 40
+      end,
+      "missing machine void" => ->(copy) { copy["void_records"].pop },
+      "allowed activation PR30" => ->(copy) { copy["forbidden_activation_pull_requests"] = [29] },
+      "extra changed path" => ->(copy) { copy["allowed_changed_paths"] << "docs/validation.md" }
+    }.each do |label, mutation|
+      copy = JSON.parse(JSON.generate(validator_amendment_2))
+      mutation.call(copy)
+      if ResearchEvidence.validate_validator_amendment_2_structure(copy, validator_v3, check_files: false).empty?
+        errors << "validator amendment 2 accepted #{label} mutation"
+      end
+    end
+    v3_mutation = JSON.parse(JSON.generate(validator_v3))
+    v3_mutation["files_sha256"]["scripts/research_evidence.rb"] = "0" * 64
+    if ResearchEvidence.validate_validator_amendment_2_structure(
+      validator_amendment_2,
+      v3_mutation,
+      check_files: false
+    ).empty?
+      errors << "validator amendment 2 accepted a changed v3 script digest"
+    end
+
+    amendment_2_sha = "e" * 40
+    amendment_2_pull = {
+      "number" => 30,
+      "id" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["id"],
+      "html_url" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["url"],
+      "state" => "open",
+      "merged_at" => nil,
+      "merge_commit_sha" => "f" * 40,
+      "changed_files" => ResearchEvidence::VALIDATOR_AMENDMENT_2_CHANGED_PATHS.length,
+      "base" => {
+        "ref" => "main",
+        "sha" => ResearchEvidence::RC7_VALIDATOR_AMENDMENT_1_COMMIT,
+        "repo" => { "id" => ResearchEvidence::VALIDATOR_AMENDMENT_2_PR["repository_id"] }
+      },
+      "head" => { "sha" => amendment_2_sha }
+    }
+    amendment_2_fetcher = lambda do |path|
+      case path
+      when "repos/MarinJursic/fixcard/pulls/30"
+        amendment_2_pull
+      when "repos/MarinJursic/fixcard/pulls/30/files?per_page=100"
+        ResearchEvidence::VALIDATOR_AMENDMENT_2_CHANGED_PATHS.map { |entry| { "filename" => entry } }
+      else
+        ResearchEvidence.github_api_json(path)
+      end
+    end
+    amendment_2_blob_fetcher = lambda do |commit, path|
+      if commit == amendment_2_sha
+        if ResearchEvidence::VALIDATOR_AMENDMENT_2_CHANGED_PATHS.include?(path)
+          current = ROOT.join(path)
+          current.binread if current.file?
+        elsif ["research/pilot-intake-authorization.json", ResearchEvidence::PAUSED_INTAKE_DOCUMENT].include?(path)
+          nil
+        else
+          ResearchEvidence.git_blob(ResearchEvidence::RC7_VALIDATOR_AMENDMENT_1_COMMIT, path)
+        end
+      else
+        ResearchEvidence.git_blob(commit, path)
+      end
+    end
+    amendment_2_source_errors = ResearchEvidence.validate_validator_amendment_2_source(
+      github_fetcher: amendment_2_fetcher,
+      event_name: "pull_request",
+      event: { "pull_request" => { "number" => 30 } },
+      blob_fetcher: amendment_2_blob_fetcher,
+      ancestor_checker: ->(_ancestor, _descendant) { true }
+    )
+    errors << "validator amendment 2 candidate source failed: #{amendment_2_source_errors.join('; ')}" unless
+      amendment_2_source_errors.empty?
+    {
+      "an intake authorization" => lambda do |commit, path|
+        path == "research/pilot-intake-authorization.json" ? "{}".b : amendment_2_blob_fetcher.call(commit, path)
+      end,
+      "the active form" => lambda do |commit, path|
+        if path == ResearchEvidence::PAUSED_INTAKE_DOCUMENT
+          ROOT.join("research", "pilots", "rc7", "validation-report.yml").binread
+        else
+          amendment_2_blob_fetcher.call(commit, path)
+        end
+      end,
+      "an open banner" => lambda do |commit, path|
+        if commit == amendment_2_sha && path == "docs/validation.md"
+          entry = ResearchEvidence.load_strict_json_object(
+            ResearchEvidence::OPEN_BANNERS_PATH,
+            "RC7 open-banner snapshot"
+          ).fetch("documents").find { |candidate| candidate["path"] == path }
+          closed = amendment_2_blob_fetcher.call(commit, path)
+          closed_prefix = (Array(entry.fetch("closed_lines")).join("\n") + "\n").b
+          open_prefix = (Array(entry.fetch("open_lines")).join("\n") + "\n").b
+          open_prefix + closed.delete_prefix(closed_prefix)
+        else
+          amendment_2_blob_fetcher.call(commit, path)
+        end
+      end
+    }.each do |label, mutated_blob_fetcher|
+      if ResearchEvidence.validate_validator_amendment_2_source(
+        github_fetcher: amendment_2_fetcher,
+        event_name: "pull_request",
+        event: { "pull_request" => { "number" => 30 } },
+        blob_fetcher: mutated_blob_fetcher,
+        ancestor_checker: ->(_ancestor, _descendant) { true }
+      ).empty?
+        errors << "validator amendment 2 accepted #{label}"
+      end
+    end
+    if ResearchEvidence.validate_validator_amendment_2_source(
+      github_fetcher: amendment_2_fetcher,
+      event_name: "pull_request",
+      event: { "pull_request" => { "number" => 31 } },
+      blob_fetcher: amendment_2_blob_fetcher,
+      ancestor_checker: ->(_ancestor, _descendant) { true }
+    ).empty?
+      errors << "validator amendment 2 accepted an unrelated candidate event"
+    end
+
+    snapshot = ResearchEvidence.load_strict_json_object(
+      ResearchEvidence::OPEN_BANNERS_PATH,
+      "RC7 open-banner snapshot"
+    )
+    exact_open_documents = Array(snapshot["documents"]).to_h do |entry|
+      path = entry.fetch("path")
+      frozen = ResearchEvidence.git_blob(ResearchEvidence::RC7_REPLACEMENT_REGISTRATION_COMMIT, path)
+      closed_prefix = (Array(entry.fetch("closed_lines")).join("\n") + "\n").b
+      open_prefix = (Array(entry.fetch("open_lines")).join("\n") + "\n").b
+      [path, open_prefix + frozen.delete_prefix(closed_prefix)]
+    end
+    exact_open_errors = ResearchEvidence.validate_open_banners(
+      ResearchEvidence::RC7_REPLACEMENT_REGISTRATION_COMMIT,
+      current_reader: ->(path) { exact_open_documents[path] }
+    )
+    errors << "all-seven exact open-banner regression failed: #{exact_open_errors.join('; ')}" unless
+      exact_open_errors.empty?
+    mutated_open_documents = exact_open_documents.transform_values(&:dup)
+    first_open_path = mutated_open_documents.keys.first
+    mutated_open_documents[first_open_path] << "unexpected\n"
+    if ResearchEvidence.validate_open_banners(
+      ResearchEvidence::RC7_REPLACEMENT_REGISTRATION_COMMIT,
+      current_reader: ->(path) { mutated_open_documents[path] }
+    ).empty?
+      errors << "open-banner validator accepted an appended byte"
+    end
+
+    status_authorization = {
+      "eligibility" => {
+        "stage_2_eligible_at" => "2026-08-21T00:00:00Z",
+        "stage_3_eligible_on" => "2026-08-21"
+      }
+    }
+    early_status = ResearchEvidence.activation_status_message(
+      status_authorization,
+      as_of: Time.iso8601("2026-08-20T23:59:59Z")
+    )
+    errors << "activation status omitted explicit boundaries" unless
+      early_status.include?("2026-08-21T00:00:00Z") && early_status.include?("2026-08-21")
+    errors << "activation status opened Stage 2/3 early" unless early_status.scan("NOT YET REACHED").length == 2
+    reached_status = ResearchEvidence.activation_status_message(
+      status_authorization,
+      as_of: Time.iso8601("2026-08-21T00:00:00Z")
+    )
+    errors << "activation status did not open reached boundaries" unless reached_status.scan("(OPEN)").length == 2
   end
 
   version_mutation = JSON.parse(JSON.generate(registration))
@@ -1296,6 +1478,17 @@ begin
     begin
       ResearchEvidence.load_validator_amendment(Pathname.new(file.path))
       errors << "validator amendment accepted a duplicate JSON key"
+    rescue ArgumentError
+      nil
+    end
+  end
+
+  Tempfile.create(["duplicate-key-validator-amendment-2", ".json"]) do |file|
+    file.write('{"schema_version":1,"schema_version":2}')
+    file.flush
+    begin
+      ResearchEvidence.load_validator_amendment_2(Pathname.new(file.path))
+      errors << "validator amendment 2 accepted a duplicate JSON key"
     rescue ArgumentError
       nil
     end

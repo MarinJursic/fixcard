@@ -21,6 +21,8 @@ module ResearchEvidence
   VALIDATOR_MANIFEST_PATH = ROOT.join("research", "pilots", "rc7", "validator-manifest.json")
   VALIDATOR_AMENDMENT_PATH = ROOT.join("research", "pilots", "rc7", "validator-amendment-1.json")
   VALIDATOR_MANIFEST_V2_PATH = ROOT.join("research", "pilots", "rc7", "validator-manifest-v2.json")
+  VALIDATOR_AMENDMENT_2_PATH = ROOT.join("research", "pilots", "rc7", "validator-amendment-2.json")
+  VALIDATOR_MANIFEST_V3_PATH = ROOT.join("research", "pilots", "rc7", "validator-manifest-v3.json")
   OPEN_BANNERS_PATH = ROOT.join("research", "pilots", "rc7", "open-banners.json")
   STAGE_2_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-2-observations.csv")
   STAGE_3_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-repository-weeks.csv")
@@ -150,6 +152,44 @@ module ResearchEvidence
     "created_at" => "2026-08-15T16:39:11Z",
     "updated_at" => "2026-08-15T16:39:11Z",
     "body_sha256" => "bee094a964cba336ccd7fe91b42d4be44553ee157b582e44873f5b72af2ee3b2"
+  }.freeze
+  RC7_VALIDATOR_AMENDMENT_1_COMMIT = "ead9b88fc5090e72860eda848423128b037e8b52"
+  RC7_VALIDATOR_AMENDMENT_1_SHA256 = "5483c2fdfc6468cb5a4e9124c0ed0eba453b29af18ea19454410e8fce653793d"
+  RC7_VALIDATOR_V2_SHA256 = "9366f7d2a0b5c6237682bfa7f95ccabd3c10a19de39d7f5ad98005b5b23cf06b"
+  VALIDATOR_AMENDMENT_2_CHANGED_PATHS = %w[
+    research/pilots/rc7/validator-amendment-2.json
+    research/pilots/rc7/validator-manifest-v3.json
+    scripts/check_research_kit.rb
+    scripts/research_evidence.rb
+  ].freeze
+  VALIDATOR_AMENDMENT_2_PR = {
+    "repository" => "MarinJursic/fixcard",
+    "repository_id" => 1_322_107_936,
+    "number" => 30,
+    "id" => 4_287_023_204,
+    "url" => "https://github.com/MarinJursic/fixcard/pull/30",
+    "base_ref" => "main"
+  }.freeze
+  VOIDED_OPENING_NOTICE_2 = {
+    "comment_id" => 5_303_294_092,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303294092",
+    "created_at" => "2026-08-15T17:02:32Z",
+    "updated_at" => "2026-08-15T17:02:32Z",
+    "body_sha256" => "8c594b572f1f5391b6ecd55e3b5b2883d557e9e013aaede2fdaad87753b4d329"
+  }.freeze
+  HUMAN_VOID_RECORD_2 = {
+    "comment_id" => 5_303_311_823,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303311823",
+    "created_at" => "2026-08-15T17:07:00Z",
+    "updated_at" => "2026-08-15T17:07:00Z",
+    "body_sha256" => "dc932ca6603f5357cf0ed86701f2397cf7f2fa6a1047cd9f48a5d27419d30e1c"
+  }.freeze
+  MACHINE_VOID_RECORD_2 = {
+    "comment_id" => 5_303_311_881,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303311881",
+    "created_at" => "2026-08-15T17:07:00Z",
+    "updated_at" => "2026-08-15T17:07:00Z",
+    "body_sha256" => "158ae925197ea71fc505294af49d2c79be23ad8f9f638596cd703b33d8f58064"
   }.freeze
 
   PAUSE_BANNERS = {
@@ -424,6 +464,14 @@ module ResearchEvidence
     load_strict_json_object(path, "RC7 validator manifest v2", required: false)
   end
 
+  def load_validator_amendment_2(path = VALIDATOR_AMENDMENT_2_PATH)
+    load_strict_json_object(path, "RC7 validator amendment 2", required: false)
+  end
+
+  def load_validator_manifest_v3(path = VALIDATOR_MANIFEST_V3_PATH)
+    load_strict_json_object(path, "RC7 validator manifest v3", required: false)
+  end
+
   def parse_strict_json_object(data, label)
     source = data.dup.force_encoding(Encoding::UTF_8)
     raise ArgumentError, "invalid #{label} encoding" unless source.valid_encoding?
@@ -536,15 +584,15 @@ module ResearchEvidence
   def validate_fresh_opening_notice(comment_id:, created_at:, amendment_pull:)
     errors = []
     errors << "activation cannot reuse the voided opening notice" if
-      comment_id == VOIDED_OPENING_NOTICE["comment_id"]
+      [VOIDED_OPENING_NOTICE["comment_id"], VOIDED_OPENING_NOTICE_2["comment_id"]].include?(comment_id)
     amendment_merged_at = canonical_utc_time(amendment_pull["merged_at"])
-    errors << "validator amendment must be merged before activation" unless
-      amendment_pull["id"] == VALIDATOR_AMENDMENT_PR["id"] &&
-      amendment_pull["number"] == VALIDATOR_AMENDMENT_PR["number"] &&
-      amendment_pull["html_url"] == VALIDATOR_AMENDMENT_PR["url"] &&
+    errors << "validator amendment 2 must be merged before activation" unless
+      amendment_pull["id"] == VALIDATOR_AMENDMENT_2_PR["id"] &&
+      amendment_pull["number"] == VALIDATOR_AMENDMENT_2_PR["number"] &&
+      amendment_pull["html_url"] == VALIDATOR_AMENDMENT_2_PR["url"] &&
       amendment_pull["state"] == "closed" && amendment_merged_at &&
       amendment_pull.dig("base", "ref") == "main" &&
-      amendment_pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_PR["repository_id"] &&
+      amendment_pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_2_PR["repository_id"] &&
       amendment_pull["merge_commit_sha"].to_s.match?(/\A[0-9a-f]{40}\z/)
     errors << "opening comment must be fresh and later than the validator amendment merge" unless
       created_at && amendment_merged_at && created_at > amendment_merged_at
@@ -763,6 +811,213 @@ module ResearchEvidence
     ["validator amendment structure failed closed: #{e.message}"]
   end
 
+  def validator_amendment_2_candidate_event?(event_name:, event:)
+    return false unless event_name == "pull_request" && event.is_a?(Hash)
+
+    event_number = event.dig("pull_request", "number") || event["number"]
+    event_number == VALIDATOR_AMENDMENT_2_PR.fetch("number")
+  rescue TypeError, NoMethodError
+    false
+  end
+
+  def expected_validator_amendment_2(v3_digest)
+    {
+      "schema_version" => 1,
+      "status" => "validator_amendment_2_registered_collection_closed",
+      "registered_on" => "2026-08-15",
+      "pilot_id" => EXPECTED_RC7_PILOT_ID,
+      "reason" => "repair_binary_open_banner_validation_and_boundary_aware_status_without_changing_protocol_or_gates",
+      "source_pull_request" => VALIDATOR_AMENDMENT_2_PR,
+      "allowed_changed_paths" => VALIDATOR_AMENDMENT_2_CHANGED_PATHS,
+      "historical_registration" => {
+        "commit" => RC7_REPLACEMENT_REGISTRATION_COMMIT,
+        "canonical_json_sha256" => RC7_REPLACEMENT_REGISTRATION_SHA256
+      },
+      "historical_validator_amendment" => {
+        "commit" => RC7_VALIDATOR_AMENDMENT_1_COMMIT,
+        "amendment_path" => "research/pilots/rc7/validator-amendment-1.json",
+        "amendment_canonical_json_sha256" => RC7_VALIDATOR_AMENDMENT_1_SHA256,
+        "manifest_path" => "research/pilots/rc7/validator-manifest-v2.json",
+        "manifest_canonical_json_sha256" => RC7_VALIDATOR_V2_SHA256
+      },
+      "replacement_validator_manifest" => {
+        "path" => "research/pilots/rc7/validator-manifest-v3.json",
+        "canonical_json_sha256" => v3_digest
+      },
+      "protocol_invariants" => {
+        "protocol_manifest_canonical_json_sha256" => RC7_PROTOCOL_MANIFEST_SHA256,
+        "fixed_gates_canonical_json_sha256" => RC7_FIXED_GATES_SHA256,
+        "kill_criteria_count" => 10,
+        "kill_criteria_canonical_json_sha256" => RC7_KILL_CRITERIA_SHA256,
+        "build_manifest_canonical_json_sha256" => EXPECTED_RC7_BUILD_MANIFEST_SHA256,
+        "build_switching" => "forbidden"
+      },
+      "voided_opening_notice" => VOIDED_OPENING_NOTICE_2,
+      "void_records" => [HUMAN_VOID_RECORD_2, MACHINE_VOID_RECORD_2],
+      "fresh_opening_notice_must_follow_amendment_merge" => true,
+      "forbidden_activation_pull_requests" => [29, 30],
+      "eligible_evidence_at_amendment" => ELIGIBLE_EVIDENCE_KEYS.to_h { |key| [key, 0] },
+      "collection_open" => false,
+      "authorization_record_present" => false,
+      "carry_forward_eligible_evidence" => false,
+      "stable_release_allowed" => false
+    }
+  end
+
+  def validate_validator_amendment_2_structure(amendment, v3, check_files: true)
+    errors = []
+    v3_digest = Digest::SHA256.hexdigest(JSON.generate(v3))
+    errors << "validator amendment 2 differs from the strict registered record" unless
+      amendment == expected_validator_amendment_2(v3_digest)
+    expected_v3 = {
+      "schema_version" => 3,
+      "pilot_id" => EXPECTED_RC7_PILOT_ID,
+      "amendment" => "research/pilots/rc7/validator-amendment-2.json",
+      "supersedes" => {
+        "commit" => RC7_VALIDATOR_AMENDMENT_1_COMMIT,
+        "path" => "research/pilots/rc7/validator-manifest-v2.json",
+        "canonical_json_sha256" => RC7_VALIDATOR_V2_SHA256
+      }
+    }
+    expected_v3.each do |field, value|
+      errors << "validator manifest v3 #{field} differs" unless v3[field] == value
+    end
+    v3_files = v3["files_sha256"]
+    unless v3.keys.sort == %w[amendment files_sha256 pilot_id schema_version supersedes].sort &&
+           v3_files.is_a?(Hash) && v3_files.keys.sort == VALIDATOR_SCRIPT_PATHS.sort
+      errors << "validator manifest v3 file set or keys differ"
+      return errors
+    end
+    if check_files
+      v3_files.each do |relative, expected_sha256|
+        file = ROOT.join(relative)
+        errors << "validator v3 file digest differs: #{relative}" unless
+          file.file? && !file.symlink? && Digest::SHA256.file(file).hexdigest == expected_sha256
+      end
+    end
+    errors
+  rescue TypeError, NoMethodError, KeyError, ArgumentError => e
+    ["validator amendment 2 structure failed closed: #{e.message}"]
+  end
+
+  def validate_validator_amendment_2_source(
+    github_fetcher: method(:github_api_json),
+    event_name: ENV["GITHUB_EVENT_NAME"],
+    event: github_event,
+    blob_fetcher: method(:git_blob),
+    ancestor_checker: method(:git_ancestor?)
+  )
+    errors = []
+    pull = github_fetcher.call("repos/MarinJursic/fixcard/pulls/30")
+    files = github_fetcher.call("repos/MarinJursic/fixcard/pulls/30/files?per_page=100")
+    errors << "validator amendment 2 pull request identity differs" unless
+      pull["number"] == VALIDATOR_AMENDMENT_2_PR["number"] &&
+      pull["id"] == VALIDATOR_AMENDMENT_2_PR["id"] &&
+      pull["html_url"] == VALIDATOR_AMENDMENT_2_PR["url"] &&
+      pull.dig("base", "ref") == "main" &&
+      pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_2_PR["repository_id"]
+    errors << "validator amendment 2 changed-path count differs" unless
+      pull["changed_files"] == VALIDATOR_AMENDMENT_2_CHANGED_PATHS.length
+    errors << "validator amendment 2 changed-path set differs" unless
+      Array(files).map { |entry| entry["filename"] }.sort == VALIDATOR_AMENDMENT_2_CHANGED_PATHS.sort
+
+    candidate = validator_amendment_2_candidate_event?(event_name: event_name, event: event)
+    if candidate
+      errors << "validator amendment 2 candidate must remain open" unless
+        pull["state"] == "open" && pull["merged_at"].nil?
+      source_commit = pull.dig("head", "sha").to_s
+      base_commit = pull.dig("base", "sha").to_s
+      errors << "validator amendment 2 candidate head is invalid" unless source_commit.match?(/\A[0-9a-f]{40}\z/)
+      errors << "validator amendment 2 candidate base lacks amendment 1" unless
+        base_commit.match?(/\A[0-9a-f]{40}\z/) &&
+        ancestor_checker.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, base_commit)
+    else
+      errors << "validator amendment 2 must be merged to protected main" unless
+        pull["state"] == "closed" && pull["merged_at"]
+      source_commit = pull["merge_commit_sha"].to_s
+      errors << "validator amendment 2 merge commit is invalid" unless source_commit.match?(/\A[0-9a-f]{40}\z/)
+      if source_commit.match?(/\A[0-9a-f]{40}\z/)
+        errors << "validator amendment 2 merge is not an ancestor of this checkout" unless
+          ancestor_checker.call(source_commit, "HEAD")
+        errors << "validator amendment 2 was not based on amendment 1" unless
+          ancestor_checker.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, "#{source_commit}^")
+      end
+    end
+
+    if source_commit&.match?(/\A[0-9a-f]{40}\z/)
+      VALIDATOR_AMENDMENT_2_CHANGED_PATHS.each do |path|
+        current = ROOT.join(path)
+        frozen = blob_fetcher.call(source_commit, path)
+        errors << "validator amendment 2 source does not contain exact #{path}" unless
+          frozen && current.file? && !current.symlink? && frozen == current.binread
+      end
+      errors << "validator amendment 2 source contains an intake authorization" if
+        blob_fetcher.call(source_commit, "research/pilot-intake-authorization.json")
+      errors << "validator amendment 2 source exposes the active validation form" if
+        blob_fetcher.call(source_commit, PAUSED_INTAKE_DOCUMENT)
+      snapshot = parse_strict_json_object(
+        blob_fetcher.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, "research/pilots/rc7/open-banners.json"),
+        "frozen RC7 open-banner snapshot"
+      )
+      Array(snapshot["documents"]).each do |entry|
+        path = entry["path"].to_s
+        errors << "validator amendment 2 source changes closed public status: #{path}" unless
+          blob_fetcher.call(source_commit, path) == blob_fetcher.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, path)
+      end
+    end
+    [VOIDED_OPENING_NOTICE_2, HUMAN_VOID_RECORD_2, MACHINE_VOID_RECORD_2].each do |record|
+      errors.concat(validate_void_comment(record, github_fetcher))
+    end
+    errors
+  rescue TypeError, NoMethodError, KeyError, ArgumentError => e
+    ["validator amendment 2 source failed closed: #{e.message}"]
+  end
+
+  def validate_historical_validator_amendment_1(
+    amendment,
+    v2,
+    github_fetcher: method(:github_api_json),
+    blob_fetcher: method(:git_blob),
+    ancestor_checker: method(:git_ancestor?)
+  )
+    errors = validate_validator_amendment_structure(amendment, v2, check_files: false)
+    errors << "historical validator amendment 1 digest differs" unless
+      Digest::SHA256.hexdigest(JSON.generate(amendment)) == RC7_VALIDATOR_AMENDMENT_1_SHA256
+    errors << "historical validator manifest v2 digest differs" unless
+      Digest::SHA256.hexdigest(JSON.generate(v2)) == RC7_VALIDATOR_V2_SHA256
+    {
+      "research/pilots/rc7/validator-amendment-1.json" => VALIDATOR_AMENDMENT_PATH,
+      "research/pilots/rc7/validator-manifest-v2.json" => VALIDATOR_MANIFEST_V2_PATH
+    }.each do |path, current|
+      errors << "historical validator amendment 1 blob differs: #{path}" unless
+        current.file? && !current.symlink? && blob_fetcher.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, path) == current.binread
+    end
+    Hash(v2["files_sha256"]).each do |path, digest|
+      frozen = blob_fetcher.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, path)
+      errors << "historical validator v2 file differs: #{path}" unless
+        frozen && Digest::SHA256.hexdigest(frozen) == digest
+    end
+    pull = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29")
+    files = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29/files?per_page=100")
+    errors << "historical validator amendment 1 pull request differs" unless
+      pull["number"] == VALIDATOR_AMENDMENT_PR["number"] &&
+      pull["id"] == VALIDATOR_AMENDMENT_PR["id"] &&
+      pull["state"] == "closed" && pull["merged_at"] &&
+      pull["merge_commit_sha"] == RC7_VALIDATOR_AMENDMENT_1_COMMIT &&
+      pull.dig("base", "ref") == "main" &&
+      pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_PR["repository_id"] &&
+      pull["changed_files"] == VALIDATOR_AMENDMENT_CHANGED_PATHS.length &&
+      Array(files).map { |entry| entry["filename"] }.sort == VALIDATOR_AMENDMENT_CHANGED_PATHS.sort &&
+      ancestor_checker.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, "#{RC7_VALIDATOR_AMENDMENT_1_COMMIT}^") &&
+      ancestor_checker.call(RC7_VALIDATOR_AMENDMENT_1_COMMIT, "HEAD")
+    [VOIDED_OPENING_NOTICE, HUMAN_VOID_RECORD, MACHINE_VOID_RECORD].each do |record|
+      errors.concat(validate_void_comment(record, github_fetcher))
+    end
+    errors
+  rescue TypeError, NoMethodError, KeyError, ArgumentError => e
+    ["historical validator amendment 1 failed closed: #{e.message}"]
+  end
+
   def validate_validator_manifest(
     replacement,
     registration_commit: nil,
@@ -808,22 +1063,33 @@ module ResearchEvidence
     end
 
     amendment = load_validator_amendment
-    if amendment.nil?
-      files.each do |relative, expected_sha256|
+    v2 = load_validator_manifest_v2
+    return errors << "historical validator amendment 1 or manifest v2 is missing" unless amendment && v2
+    errors.concat(
+      validate_historical_validator_amendment_1(
+        amendment,
+        v2,
+        github_fetcher: github_fetcher,
+        blob_fetcher: blob_fetcher,
+        ancestor_checker: ancestor_checker
+      )
+    )
+
+    amendment_2 = load_validator_amendment_2
+    if amendment_2.nil?
+      Hash(v2["files_sha256"]).each do |relative, expected_sha256|
         file = ROOT.join(relative)
-        errors << "validator file changed without an amendment: #{relative}" unless
+        errors << "validator v2 file changed without amendment 2: #{relative}" unless
           file.file? && !file.symlink? && Digest::SHA256.file(file).hexdigest == expected_sha256
       end
       return errors
     end
 
-    v2 = load_validator_manifest_v2
-    return errors << "validator manifest v2 is missing" unless v2
-
-    errors.concat(validate_validator_amendment_structure(amendment, v2))
+    v3 = load_validator_manifest_v3
+    return errors << "validator manifest v3 is missing" unless v3
+    errors.concat(validate_validator_amendment_2_structure(amendment_2, v3))
     errors.concat(
-      validate_validator_amendment_source(
-        amendment,
+      validate_validator_amendment_2_source(
         github_fetcher: github_fetcher,
         event_name: event_name,
         event: event,
@@ -969,8 +1235,10 @@ module ResearchEvidence
     errors << "activation pull-request base must be main" unless activation&.fetch("base_ref", nil) == "main"
     expected_pr_url = "https://github.com/MarinJursic/fixcard/pull/#{activation&.fetch('number', '')}"
     errors << "activation pull-request URL differs" unless activation&.fetch("url", nil) == expected_pr_url
-    errors << "activation and validator amendment must use different pull requests" if
-      activation&.fetch("number", nil) == VALIDATOR_AMENDMENT_PR["number"]
+    errors << "activation must use a pull request separate from both validator amendments" if
+      [VALIDATOR_AMENDMENT_PR["number"], VALIDATOR_AMENDMENT_2_PR["number"]].include?(
+        activation&.fetch("number", nil)
+      )
     return errors unless errors.empty?
 
     registration_pr_number = registration_binding.fetch("pull_request_number")
@@ -981,7 +1249,7 @@ module ResearchEvidence
     issue_api = github_fetcher.call("repos/MarinJursic/fixcard/issues/5")
     comment_api = github_fetcher.call("repos/MarinJursic/fixcard/issues/comments/#{comment_id}")
     registration_pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/#{registration_pr_number}")
-    amendment_pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29")
+    amendment_pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/30")
     pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/#{activation.fetch('number')}")
     errors << "GitHub repository identity differs" unless
       repository_api["id"] == policy_issue["repository_id"] && repository_api["full_name"] == policy_issue["repository"]
@@ -1145,24 +1413,44 @@ module ResearchEvidence
     errors
   end
 
-  def validate_open_banners(registration_commit)
+  def activation_status_message(authorization, as_of: Time.now.utc)
+    stage_2_value = authorization.dig("eligibility", "stage_2_eligible_at").to_s
+    stage_3_value = authorization.dig("eligibility", "stage_3_eligible_on").to_s
+    stage_2_at = canonical_utc_time(stage_2_value)
+    stage_3_on = iso_date(stage_3_value)
+    raise ArgumentError, "activation status boundaries are invalid" unless stage_2_at && stage_3_on
+
+    stage_2_state = as_of < stage_2_at ? "NOT YET REACHED" : "OPEN"
+    stage_3_state = as_of.to_date < stage_3_on ? "NOT YET REACHED" : "OPEN"
+    "OPEN — Milestone 0 and Stage 1 are open. " \
+      "Stage 2 boundary #{stage_2_value} (#{stage_2_state}); " \
+      "Stage 3 boundary #{stage_3_value} (#{stage_3_state})."
+  end
+
+  def validate_open_banners(
+    registration_commit,
+    current_reader: lambda do |path|
+      file = ROOT.join(path)
+      file.binread if file.file? && !file.symlink?
+    end
+  )
     snapshot = load_strict_json_object(OPEN_BANNERS_PATH, "RC7 open-banner snapshot")
     Array(snapshot["documents"]).each_with_object([]) do |entry, errors|
       path = entry["path"].to_s
       frozen = git_blob(registration_commit, path)
-      current_path = ROOT.join(path)
-      unless frozen && current_path.file? && !current_path.symlink?
+      current = current_reader.call(path)
+      unless frozen && current
         errors << "activation public-status document is missing or unsafe: #{path}"
         next
       end
-      closed_prefix = Array(entry["closed_lines"]).join("\n") + "\n"
-      open_prefix = Array(entry["open_lines"]).join("\n") + "\n"
+      closed_prefix = (Array(entry["closed_lines"]).join("\n") + "\n").b
+      open_prefix = (Array(entry["open_lines"]).join("\n") + "\n").b
       unless frozen.start_with?(closed_prefix)
         errors << "preregistered closed banner differs for #{path}"
         next
       end
-      expected = open_prefix.b + frozen.delete_prefix(closed_prefix)
-      errors << "active public banner differs for #{path}" unless current_path.binread == expected
+      expected = open_prefix + frozen.delete_prefix(closed_prefix)
+      errors << "active public banner differs for #{path}" unless current == expected
     end
   rescue TypeError, NoMethodError, KeyError, ArgumentError => e
     ["open-banner snapshot is invalid: #{e.message}"]
@@ -2308,7 +2596,7 @@ if $PROGRAM_NAME == __FILE__
           authorization
         )
         abort authorization_errors.join("\n") unless authorization_errors.empty?
-        puts "OPEN — the protected RC7 activation is effective for its explicitly named stages"
+        puts ResearchEvidence.activation_status_message(authorization)
       end
       exit 0
     rescue ArgumentError => e

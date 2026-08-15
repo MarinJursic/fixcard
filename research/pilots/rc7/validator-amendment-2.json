@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "status": "validator_amendment_2_registered_collection_closed",
+  "registered_on": "2026-08-15",
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "reason": "repair_binary_open_banner_validation_and_boundary_aware_status_without_changing_protocol_or_gates",
+  "source_pull_request": {
+    "repository": "MarinJursic/fixcard",
+    "repository_id": 1322107936,
+    "number": 30,
+    "id": 4287023204,
+    "url": "https://github.com/MarinJursic/fixcard/pull/30",
+    "base_ref": "main"
+  },
+  "allowed_changed_paths": [
+    "research/pilots/rc7/validator-amendment-2.json",
+    "research/pilots/rc7/validator-manifest-v3.json",
+    "scripts/check_research_kit.rb",
+    "scripts/research_evidence.rb"
+  ],
+  "historical_registration": {
+    "commit": "de3d745f3d307e6df875cbd03afa56b115aa022b",
+    "canonical_json_sha256": "f09face4eabb46cf218888fa7cfcdc7d2997b7f7b5290fa0d4992beeffee4fad"
+  },
+  "historical_validator_amendment": {
+    "commit": "ead9b88fc5090e72860eda848423128b037e8b52",
+    "amendment_path": "research/pilots/rc7/validator-amendment-1.json",
+    "amendment_canonical_json_sha256": "5483c2fdfc6468cb5a4e9124c0ed0eba453b29af18ea19454410e8fce653793d",
+    "manifest_path": "research/pilots/rc7/validator-manifest-v2.json",
+    "manifest_canonical_json_sha256": "9366f7d2a0b5c6237682bfa7f95ccabd3c10a19de39d7f5ad98005b5b23cf06b"
+  },
+  "replacement_validator_manifest": {
+    "path": "research/pilots/rc7/validator-manifest-v3.json",
+    "canonical_json_sha256": "5f251745456d68367cccf655aa4086bedec67a07eb2671cee3956e868384c427"
+  },
+  "protocol_invariants": {
+    "protocol_manifest_canonical_json_sha256": "3c307cf8589d1ccc437d550b11b99086d277a7b358f9202d9a591a8872097eae",
+    "fixed_gates_canonical_json_sha256": "bc0f1db8ee5283de08f776056c37b8373170414798dd88740cf0a20012ceeabf",
+    "kill_criteria_count": 10,
+    "kill_criteria_canonical_json_sha256": "3823dc19439500f6f7c660ecf5bf31da808a497b1c4570c94f6bef231f1f0c89",
+    "build_manifest_canonical_json_sha256": "f18abc931e870a3a934877b4d33611e8f84190f2e9d765335885dde0d1fa7987",
+    "build_switching": "forbidden"
+  },
+  "voided_opening_notice": {
+    "comment_id": 5303294092,
+    "comment_url": "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303294092",
+    "created_at": "2026-08-15T17:02:32Z",
+    "updated_at": "2026-08-15T17:02:32Z",
+    "body_sha256": "8c594b572f1f5391b6ecd55e3b5b2883d557e9e013aaede2fdaad87753b4d329"
+  },
+  "void_records": [
+    {
+      "comment_id": 5303311823,
+      "comment_url": "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303311823",
+      "created_at": "2026-08-15T17:07:00Z",
+      "updated_at": "2026-08-15T17:07:00Z",
+      "body_sha256": "dc932ca6603f5357cf0ed86701f2397cf7f2fa6a1047cd9f48a5d27419d30e1c"
+    },
+    {
+      "comment_id": 5303311881,
+      "comment_url": "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303311881",
+      "created_at": "2026-08-15T17:07:00Z",
+      "updated_at": "2026-08-15T17:07:00Z",
+      "body_sha256": "158ae925197ea71fc505294af49d2c79be23ad8f9f638596cd703b33d8f58064"
+    }
+  ],
+  "fresh_opening_notice_must_follow_amendment_merge": true,
+  "forbidden_activation_pull_requests": [29, 30],
+  "eligible_evidence_at_amendment": {
+    "permissioned_second_reviewed_real_pairs": 0,
+    "stage_1_recruited_participants": 0,
+    "stage_1_completed_two_week_diaries": 0,
+    "stage_2_real_card_observations": 0,
+    "stage_3_repositories": 0,
+    "stage_3_repository_weeks": 0
+  },
+  "collection_open": false,
+  "authorization_record_present": false,
+  "carry_forward_eligible_evidence": false,
+  "stable_release_allowed": false
+}
