@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "pilot_id": "fixcard-rc7-2026-08-15",
+  "amendment": "research/pilots/rc7/validator-amendment-1.json",
+  "supersedes": {
+    "registration_commit": "de3d745f3d307e6df875cbd03afa56b115aa022b",
+    "path": "research/pilots/rc7/validator-manifest.json",
+    "canonical_json_sha256": "62379900066613161099f0af9bf2022f0725fbc47733b62e5fb4dc8299d97997"
+  },
+  "files_sha256": {
+    "scripts/research_evidence.rb": "beea1c9dbf84ebe73db760c032ab37418f440b120edf1b6d27f5b6cb8466da3d",
+    "scripts/check_research_kit.rb": "989203625ee96dbb32969e733cc9da5d33eca5aa3aa9092c4aebfbbb90b7e715",
+    "scripts/verify_rc7_supply_chain.rb": "f4f142a08ca9c77c9c397ed991c4f3d3f8707c14b1e0f1e6f9091f17e8f2944a"
+  }
+}

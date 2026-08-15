@@ -19,6 +19,8 @@ module ResearchEvidence
   INTAKE_AUTHORIZATION_PATH = ROOT.join("research", "pilot-intake-authorization.json")
   ACTIVATION_POLICY_PATH = ROOT.join("research", "pilots", "rc7", "activation-policy.json")
   VALIDATOR_MANIFEST_PATH = ROOT.join("research", "pilots", "rc7", "validator-manifest.json")
+  VALIDATOR_AMENDMENT_PATH = ROOT.join("research", "pilots", "rc7", "validator-amendment-1.json")
+  VALIDATOR_MANIFEST_V2_PATH = ROOT.join("research", "pilots", "rc7", "validator-manifest-v2.json")
   OPEN_BANNERS_PATH = ROOT.join("research", "pilots", "rc7", "open-banners.json")
   STAGE_2_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-2-observations.csv")
   STAGE_3_TEMPLATE_PATH = ROOT.join("research", "templates", "stage-3-repository-weeks.csv")
@@ -104,6 +106,51 @@ module ResearchEvidence
 
   EXPECTED_RC7_PILOT_ID = "fixcard-rc7-2026-08-15"
   EXPECTED_RC7_BUILD_MANIFEST_SHA256 = "f18abc931e870a3a934877b4d33611e8f84190f2e9d765335885dde0d1fa7987"
+  RC7_REPLACEMENT_REGISTRATION_COMMIT = "de3d745f3d307e6df875cbd03afa56b115aa022b"
+  RC7_REPLACEMENT_REGISTRATION_SHA256 = "f09face4eabb46cf218888fa7cfcdc7d2997b7f7b5290fa0d4992beeffee4fad"
+  RC7_VALIDATOR_V1_SHA256 = "62379900066613161099f0af9bf2022f0725fbc47733b62e5fb4dc8299d97997"
+  RC7_PROTOCOL_MANIFEST_SHA256 = "3c307cf8589d1ccc437d550b11b99086d277a7b358f9202d9a591a8872097eae"
+  RC7_FIXED_GATES_SHA256 = "bc0f1db8ee5283de08f776056c37b8373170414798dd88740cf0a20012ceeabf"
+  RC7_KILL_CRITERIA_SHA256 = "3823dc19439500f6f7c660ecf5bf31da808a497b1c4570c94f6bef231f1f0c89"
+  VALIDATOR_SCRIPT_PATHS = %w[
+    scripts/check_research_kit.rb scripts/research_evidence.rb
+    scripts/verify_rc7_supply_chain.rb
+  ].freeze
+  VALIDATOR_AMENDMENT_CHANGED_PATHS = %w[
+    research/pilots/rc7/validator-amendment-1.json
+    research/pilots/rc7/validator-manifest-v2.json
+    scripts/check_research_kit.rb
+    scripts/research_evidence.rb
+  ].freeze
+  VALIDATOR_AMENDMENT_PR = {
+    "repository" => "MarinJursic/fixcard",
+    "repository_id" => 1_322_107_936,
+    "number" => 29,
+    "id" => 4_286_922_642,
+    "url" => "https://github.com/MarinJursic/fixcard/pull/29",
+    "base_ref" => "main"
+  }.freeze
+  VOIDED_OPENING_NOTICE = {
+    "comment_id" => 5_303_156_985,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303156985",
+    "created_at" => "2026-08-15T16:28:29Z",
+    "updated_at" => "2026-08-15T16:28:29Z",
+    "body_sha256" => "30807447dba31d9b893d26ace992bf5fbc8e322ff9d0b7561c85923de7f3e587"
+  }.freeze
+  HUMAN_VOID_RECORD = {
+    "comment_id" => 5_303_181_461,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303181461",
+    "created_at" => "2026-08-15T16:34:31Z",
+    "updated_at" => "2026-08-15T16:34:31Z",
+    "body_sha256" => "62d06883c4b796593f772ce91f2ae47cdc74a7cd54c14de09597d6b351ae6266"
+  }.freeze
+  MACHINE_VOID_RECORD = {
+    "comment_id" => 5_303_200_367,
+    "comment_url" => "https://github.com/MarinJursic/fixcard/issues/5#issuecomment-5303200367",
+    "created_at" => "2026-08-15T16:39:11Z",
+    "updated_at" => "2026-08-15T16:39:11Z",
+    "body_sha256" => "bee094a964cba336ccd7fe91b42d4be44553ee157b582e44873f5b72af2ee3b2"
+  }.freeze
 
   PAUSE_BANNERS = {
     "docs/research-study.md" => <<~MARKDOWN,
@@ -369,6 +416,26 @@ module ResearchEvidence
     load_strict_json_object(path, "intake authorization", required: false)
   end
 
+  def load_validator_amendment(path = VALIDATOR_AMENDMENT_PATH)
+    load_strict_json_object(path, "RC7 validator amendment", required: false)
+  end
+
+  def load_validator_manifest_v2(path = VALIDATOR_MANIFEST_V2_PATH)
+    load_strict_json_object(path, "RC7 validator manifest v2", required: false)
+  end
+
+  def parse_strict_json_object(data, label)
+    source = data.dup.force_encoding(Encoding::UTF_8)
+    raise ArgumentError, "invalid #{label} encoding" unless source.valid_encoding?
+
+    object = JSON.parse(source, object_class: StrictJsonObject)
+    raise ArgumentError, "#{label} top level must be an object" unless object.is_a?(Hash)
+
+    object
+  rescue DuplicateJsonKeyError, JSON::ParserError => e
+    raise ArgumentError, "invalid #{label} JSON: #{e.message}"
+  end
+
   def load_strict_json_object(path, label, required: true)
     path = Pathname.new(path)
     return nil unless required || path.exist?
@@ -389,19 +456,11 @@ module ResearchEvidence
     end
     raise ArgumentError, "#{label} exceeds #{MAX_INPUT_BYTES} bytes" if data.bytesize > MAX_INPUT_BYTES
 
-    data.force_encoding(Encoding::UTF_8)
-    raise ArgumentError, "invalid #{label} encoding" unless data.valid_encoding?
-
-    object = JSON.parse(data, object_class: StrictJsonObject)
-    raise ArgumentError, "#{label} top level must be an object" unless object.is_a?(Hash)
-
-    object
+    parse_strict_json_object(data, label)
   rescue Errno::ENOENT => e
     raise ArgumentError, "missing #{label}: #{e.message}" if required
 
     nil
-  rescue DuplicateJsonKeyError, JSON::ParserError => e
-    raise ArgumentError, "invalid #{label} JSON: #{e.message}"
   end
 
   def validate_interruption(interruption)
@@ -474,6 +533,26 @@ module ResearchEvidence
     errors
   end
 
+  def validate_fresh_opening_notice(comment_id:, created_at:, amendment_pull:)
+    errors = []
+    errors << "activation cannot reuse the voided opening notice" if
+      comment_id == VOIDED_OPENING_NOTICE["comment_id"]
+    amendment_merged_at = canonical_utc_time(amendment_pull["merged_at"])
+    errors << "validator amendment must be merged before activation" unless
+      amendment_pull["id"] == VALIDATOR_AMENDMENT_PR["id"] &&
+      amendment_pull["number"] == VALIDATOR_AMENDMENT_PR["number"] &&
+      amendment_pull["html_url"] == VALIDATOR_AMENDMENT_PR["url"] &&
+      amendment_pull["state"] == "closed" && amendment_merged_at &&
+      amendment_pull.dig("base", "ref") == "main" &&
+      amendment_pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_PR["repository_id"] &&
+      amendment_pull["merge_commit_sha"].to_s.match?(/\A[0-9a-f]{40}\z/)
+    errors << "opening comment must be fresh and later than the validator amendment merge" unless
+      created_at && amendment_merged_at && created_at > amendment_merged_at
+    errors
+  rescue TypeError, NoMethodError
+    ["fresh opening notice validation failed closed"]
+  end
+
   def git_blob(commit, path)
     stdout, _stderr, status = Open3.capture3("git", "-C", ROOT.to_s, "show", "#{commit}:#{path}")
     status.success? ? stdout.b : nil
@@ -488,39 +567,270 @@ module ResearchEvidence
     raise ArgumentError, "GitHub verification returned invalid JSON for #{path}: #{e.message}"
   end
 
-  def validate_validator_manifest(replacement, registration_commit: nil)
+  def github_event
+    path = ENV["GITHUB_EVENT_PATH"]
+    path ? load_strict_json_object(Pathname.new(path), "GitHub Actions event") : {}
+  end
+
+  def validator_amendment_candidate_event?(event_name:, event:)
+    return false unless event_name == "pull_request" && event.is_a?(Hash)
+
+    event_number = event.dig("pull_request", "number") || event["number"]
+    event_number == VALIDATOR_AMENDMENT_PR.fetch("number")
+  rescue TypeError, NoMethodError
+    false
+  end
+
+  def git_ancestor?(ancestor, descendant)
+    system(
+      "git", "-C", ROOT.to_s, "merge-base", "--is-ancestor", ancestor, descendant,
+      out: File::NULL, err: File::NULL
+    )
+  end
+
+  def expected_validator_amendment(v2_digest)
+    {
+      "schema_version" => 1,
+      "status" => "validator_amendment_registered_collection_closed",
+      "registered_on" => "2026-08-15",
+      "pilot_id" => EXPECTED_RC7_PILOT_ID,
+      "reason" => "repair_exact_preregistered_open_banner_projection_without_changing_protocol_or_gates",
+      "source_pull_request" => VALIDATOR_AMENDMENT_PR,
+      "allowed_changed_paths" => VALIDATOR_AMENDMENT_CHANGED_PATHS,
+      "historical_registration" => {
+        "commit" => RC7_REPLACEMENT_REGISTRATION_COMMIT,
+        "canonical_json_sha256" => RC7_REPLACEMENT_REGISTRATION_SHA256
+      },
+      "historical_validator_manifest" => {
+        "path" => "research/pilots/rc7/validator-manifest.json",
+        "canonical_json_sha256" => RC7_VALIDATOR_V1_SHA256
+      },
+      "replacement_validator_manifest" => {
+        "path" => "research/pilots/rc7/validator-manifest-v2.json",
+        "canonical_json_sha256" => v2_digest
+      },
+      "protocol_invariants" => {
+        "protocol_manifest_canonical_json_sha256" => RC7_PROTOCOL_MANIFEST_SHA256,
+        "fixed_gates_canonical_json_sha256" => RC7_FIXED_GATES_SHA256,
+        "kill_criteria_count" => 10,
+        "kill_criteria_canonical_json_sha256" => RC7_KILL_CRITERIA_SHA256,
+        "build_manifest_canonical_json_sha256" => EXPECTED_RC7_BUILD_MANIFEST_SHA256,
+        "build_switching" => "forbidden"
+      },
+      "voided_opening_notice" => VOIDED_OPENING_NOTICE,
+      "void_records" => [HUMAN_VOID_RECORD, MACHINE_VOID_RECORD],
+      "fresh_opening_notice_must_follow_amendment_merge" => true,
+      "activation_must_use_separate_pull_request" => true,
+      "eligible_evidence_at_amendment" => ELIGIBLE_EVIDENCE_KEYS.to_h { |key| [key, 0] },
+      "collection_open" => false,
+      "authorization_record_present" => false,
+      "carry_forward_eligible_evidence" => false,
+      "stable_release_allowed" => false
+    }
+  end
+
+  def validate_void_comment(record, github_fetcher)
+    live = github_fetcher.call("repos/MarinJursic/fixcard/issues/comments/#{record.fetch('comment_id')}")
+    errors = []
+    expected = {
+      "id" => record["comment_id"],
+      "html_url" => record["comment_url"],
+      "created_at" => record["created_at"],
+      "updated_at" => record["updated_at"]
+    }
+    expected.each do |field, value|
+      errors << "validator amendment void comment #{field} differs" unless live[field] == value
+    end
+    errors << "validator amendment void comment author differs" unless
+      live.dig("user", "login") == "MarinJursic" && live.dig("user", "id") == 50_271_892
+    errors << "validator amendment void comment body digest differs" unless
+      Digest::SHA256.hexdigest(live["body"].to_s) == record["body_sha256"]
+    errors
+  end
+
+  def validate_validator_amendment_source(
+    amendment,
+    github_fetcher: method(:github_api_json),
+    event_name: ENV["GITHUB_EVENT_NAME"],
+    event: github_event,
+    blob_fetcher: method(:git_blob),
+    ancestor_checker: method(:git_ancestor?)
+  )
+    errors = []
+    pull = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29")
+    files = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29/files?per_page=100")
+    errors << "validator amendment repository identity differs" unless
+      pull.dig("base", "repo", "id") == VALIDATOR_AMENDMENT_PR["repository_id"]
+    errors << "validator amendment pull request identity differs" unless
+      pull["number"] == VALIDATOR_AMENDMENT_PR["number"] &&
+      pull["id"] == VALIDATOR_AMENDMENT_PR["id"] &&
+      pull["html_url"] == VALIDATOR_AMENDMENT_PR["url"] &&
+      pull.dig("base", "ref") == VALIDATOR_AMENDMENT_PR["base_ref"]
+    changed_paths = Array(files).map { |entry| entry["filename"] }.sort
+    errors << "validator amendment changed-path count differs" unless
+      pull["changed_files"] == VALIDATOR_AMENDMENT_CHANGED_PATHS.length
+    errors << "validator amendment changed-path set differs" unless
+      changed_paths == VALIDATOR_AMENDMENT_CHANGED_PATHS.sort
+
+    candidate = validator_amendment_candidate_event?(event_name: event_name, event: event)
+    if candidate
+      errors << "validator amendment candidate pull request must remain open" unless
+        pull["state"] == "open" && pull["merged_at"].nil?
+      source_commit = pull.dig("head", "sha").to_s
+      errors << "validator amendment candidate head commit is invalid" unless source_commit.match?(/\A[0-9a-f]{40}\z/)
+      base_commit = pull.dig("base", "sha").to_s
+      errors << "validator amendment candidate base lacks the preregistration" unless
+        base_commit.match?(/\A[0-9a-f]{40}\z/) &&
+        ancestor_checker.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, base_commit)
+    else
+      errors << "validator amendment pull request must be merged to protected main" unless
+        pull["state"] == "closed" && pull["merged_at"] && pull.dig("base", "ref") == "main"
+      source_commit = pull["merge_commit_sha"].to_s
+      errors << "validator amendment merge commit is invalid" unless source_commit.match?(/\A[0-9a-f]{40}\z/)
+      if source_commit.match?(/\A[0-9a-f]{40}\z/)
+        errors << "validator amendment merge is not an ancestor of this checkout" unless
+          ancestor_checker.call(source_commit, "HEAD")
+        errors << "validator amendment was not based on the preregistration" unless
+          ancestor_checker.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, "#{source_commit}^")
+      end
+    end
+
+    if source_commit&.match?(/\A[0-9a-f]{40}\z/)
+      VALIDATOR_AMENDMENT_CHANGED_PATHS.each do |path|
+        current = ROOT.join(path)
+        frozen = blob_fetcher.call(source_commit, path)
+        errors << "validator amendment source does not contain exact #{path}" unless
+          frozen && current.file? && !current.symlink? && frozen == current.binread
+      end
+      errors << "validator amendment source contains an intake authorization" if
+        blob_fetcher.call(source_commit, "research/pilot-intake-authorization.json")
+      errors << "validator amendment source exposes the active validation form" if
+        blob_fetcher.call(source_commit, PAUSED_INTAKE_DOCUMENT)
+      snapshot = parse_strict_json_object(
+        blob_fetcher.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, "research/pilots/rc7/open-banners.json"),
+        "frozen RC7 open-banner snapshot"
+      )
+      Array(snapshot["documents"]).each do |entry|
+        path = entry["path"].to_s
+        errors << "validator amendment source changes closed public status: #{path}" unless
+          blob_fetcher.call(source_commit, path) == blob_fetcher.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, path)
+      end
+    end
+    [VOIDED_OPENING_NOTICE, HUMAN_VOID_RECORD, MACHINE_VOID_RECORD].each do |record|
+      errors.concat(validate_void_comment(record, github_fetcher))
+    end
+    errors
+  rescue TypeError, NoMethodError, KeyError, ArgumentError => e
+    ["validator amendment source failed closed: #{e.message}"]
+  end
+
+  def validate_validator_amendment_structure(amendment, v2, check_files: true)
+    errors = []
+    v2_digest = Digest::SHA256.hexdigest(JSON.generate(v2))
+    errors << "validator amendment differs from the strict registered record" unless
+      amendment == expected_validator_amendment(v2_digest)
+    expected_v2 = {
+      "schema_version" => 2,
+      "pilot_id" => EXPECTED_RC7_PILOT_ID,
+      "amendment" => "research/pilots/rc7/validator-amendment-1.json",
+      "supersedes" => {
+        "registration_commit" => RC7_REPLACEMENT_REGISTRATION_COMMIT,
+        "path" => "research/pilots/rc7/validator-manifest.json",
+        "canonical_json_sha256" => RC7_VALIDATOR_V1_SHA256
+      }
+    }
+    expected_v2.each do |field, value|
+      errors << "validator manifest v2 #{field} differs" unless v2[field] == value
+    end
+    v2_files = v2["files_sha256"]
+    unless v2.keys.sort == %w[amendment files_sha256 pilot_id schema_version supersedes].sort &&
+           v2_files.is_a?(Hash) && v2_files.keys.sort == VALIDATOR_SCRIPT_PATHS.sort
+      errors << "validator manifest v2 file set or keys differ"
+      return errors
+    end
+    if check_files
+      v2_files.each do |relative, expected_sha256|
+        file = ROOT.join(relative)
+        if !file.file? || file.symlink?
+          errors << "validator v2 file is missing or unsafe: #{relative}"
+        elsif Digest::SHA256.file(file).hexdigest != expected_sha256
+          errors << "validator v2 file digest differs: #{relative}"
+        end
+      end
+    end
+    errors
+  rescue TypeError, NoMethodError, KeyError, ArgumentError => e
+    ["validator amendment structure failed closed: #{e.message}"]
+  end
+
+  def validate_validator_manifest(
+    replacement,
+    registration_commit: nil,
+    github_fetcher: method(:github_api_json),
+    event_name: ENV["GITHUB_EVENT_NAME"],
+    event: github_event,
+    blob_fetcher: method(:git_blob),
+    ancestor_checker: method(:git_ancestor?)
+  )
     binding = replacement["validator_manifest"]
     return ["validator manifest binding is missing"] unless binding.is_a?(Hash)
 
     path = binding["path"].to_s
     return ["validator manifest path differs"] unless path == "research/pilots/rc7/validator-manifest.json"
 
-    manifest = load_strict_json_object(ROOT.join(path), "RC7 validator manifest")
+    manifest = load_strict_json_object(ROOT.join(path), "RC7 historical validator manifest")
     errors = []
     errors << "validator manifest canonical digest differs" unless
-      Digest::SHA256.hexdigest(JSON.generate(manifest)) == binding["canonical_json_sha256"]
+      Digest::SHA256.hexdigest(JSON.generate(manifest)) == binding["canonical_json_sha256"] &&
+      binding["canonical_json_sha256"] == RC7_VALIDATOR_V1_SHA256
     errors << "validator manifest pilot_id differs" unless manifest["pilot_id"] == EXPECTED_RC7_PILOT_ID
     files = manifest["files_sha256"]
-    unless files.is_a?(Hash) && files.keys.sort == %w[
-      scripts/check_research_kit.rb scripts/research_evidence.rb scripts/verify_rc7_supply_chain.rb
-    ].sort
+    unless files.is_a?(Hash) && files.keys.sort == VALIDATOR_SCRIPT_PATHS.sort
       errors << "validator manifest file set differs"
       return errors
     end
     files.each do |relative, expected_sha256|
-      file = ROOT.join(relative)
-      if !file.file? || file.symlink?
-        errors << "validator file is missing or unsafe: #{relative}"
-      elsif Digest::SHA256.file(file).hexdigest != expected_sha256
-        errors << "validator file changed after preregistration: #{relative}"
-      end
+      frozen_file = blob_fetcher.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, relative)
+      errors << "historical validator file differs at preregistration: #{relative}" unless
+        frozen_file && Digest::SHA256.hexdigest(frozen_file) == expected_sha256
     end
+    frozen_manifest = blob_fetcher.call(RC7_REPLACEMENT_REGISTRATION_COMMIT, path)
+    errors << "preregistration commit does not contain the historical validator manifest" unless frozen_manifest
+    errors << "historical validator manifest differs from the preregistration commit" unless
+      frozen_manifest && frozen_manifest == ROOT.join(path).binread
     if registration_commit
-      frozen_manifest = git_blob(registration_commit, path)
+      errors << "activation registration commit is not the preregistration commit" unless
+        registration_commit == RC7_REPLACEMENT_REGISTRATION_COMMIT
+      frozen_manifest = blob_fetcher.call(registration_commit, path)
       errors << "registration commit does not contain the validator manifest" unless frozen_manifest
       errors << "validator manifest differs from the registration commit" if
         frozen_manifest && frozen_manifest != ROOT.join(path).binread
     end
+
+    amendment = load_validator_amendment
+    if amendment.nil?
+      files.each do |relative, expected_sha256|
+        file = ROOT.join(relative)
+        errors << "validator file changed without an amendment: #{relative}" unless
+          file.file? && !file.symlink? && Digest::SHA256.file(file).hexdigest == expected_sha256
+      end
+      return errors
+    end
+
+    v2 = load_validator_manifest_v2
+    return errors << "validator manifest v2 is missing" unless v2
+
+    errors.concat(validate_validator_amendment_structure(amendment, v2))
+    errors.concat(
+      validate_validator_amendment_source(
+        amendment,
+        github_fetcher: github_fetcher,
+        event_name: event_name,
+        event: event,
+        blob_fetcher: blob_fetcher,
+        ancestor_checker: ancestor_checker
+      )
+    )
     errors
   rescue TypeError, NoMethodError, KeyError, ArgumentError => e
     ["validator manifest is invalid: #{e.message}"]
@@ -659,6 +969,8 @@ module ResearchEvidence
     errors << "activation pull-request base must be main" unless activation&.fetch("base_ref", nil) == "main"
     expected_pr_url = "https://github.com/MarinJursic/fixcard/pull/#{activation&.fetch('number', '')}"
     errors << "activation pull-request URL differs" unless activation&.fetch("url", nil) == expected_pr_url
+    errors << "activation and validator amendment must use different pull requests" if
+      activation&.fetch("number", nil) == VALIDATOR_AMENDMENT_PR["number"]
     return errors unless errors.empty?
 
     registration_pr_number = registration_binding.fetch("pull_request_number")
@@ -669,6 +981,7 @@ module ResearchEvidence
     issue_api = github_fetcher.call("repos/MarinJursic/fixcard/issues/5")
     comment_api = github_fetcher.call("repos/MarinJursic/fixcard/issues/comments/#{comment_id}")
     registration_pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/#{registration_pr_number}")
+    amendment_pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/29")
     pull_api = github_fetcher.call("repos/MarinJursic/fixcard/pulls/#{activation.fetch('number')}")
     errors << "GitHub repository identity differs" unless
       repository_api["id"] == policy_issue["repository_id"] && repository_api["full_name"] == policy_issue["repository"]
@@ -704,6 +1017,14 @@ module ResearchEvidence
     registration_merged_at = canonical_utc_time(registration_pull_api["merged_at"])
     errors << "opening comment must be later than the protected preregistration merge" unless
       created_at && registration_merged_at && created_at > registration_merged_at
+    amendment_merge_commit = amendment_pull_api["merge_commit_sha"].to_s
+    errors.concat(
+      validate_fresh_opening_notice(
+        comment_id: comment_id,
+        created_at: created_at,
+        amendment_pull: amendment_pull_api
+      )
+    )
     errors << "activation pull request identity differs" unless
       pull_api["id"] == activation["id"] && pull_api["number"] == activation["number"] &&
       pull_api["html_url"] == activation["url"]
@@ -723,6 +1044,9 @@ module ResearchEvidence
       errors << "activation merge commit is not an ancestor of this checkout" unless ancestor.success?
       errors << "replacement registration was not merged before activation" unless
         system("git", "-C", ROOT.to_s, "merge-base", "--is-ancestor", registration_commit, "#{merge_commit}^", out: File::NULL, err: File::NULL)
+      errors << "validator amendment was not merged before activation" unless
+        amendment_merge_commit.match?(/\A[0-9a-f]{40}\z/) &&
+        git_ancestor?(amendment_merge_commit, "#{merge_commit}^")
       frozen_authorization = git_blob(merge_commit, "research/pilot-intake-authorization.json")
       errors << "activation merge commit does not contain this authorization" unless
         frozen_authorization && frozen_authorization == INTAKE_AUTHORIZATION_PATH.binread
@@ -744,6 +1068,10 @@ module ResearchEvidence
       errors << "activation candidate base does not contain the preregistration" unless
         base_commit.match?(/\A[0-9a-f]{40}\z/) &&
         system("git", "-C", ROOT.to_s, "merge-base", "--is-ancestor", registration_commit, base_commit, out: File::NULL, err: File::NULL)
+      errors << "activation candidate base does not contain the validator amendment" unless
+        base_commit.match?(/\A[0-9a-f]{40}\z/) &&
+        amendment_merge_commit.match?(/\A[0-9a-f]{40}\z/) &&
+        git_ancestor?(amendment_merge_commit, base_commit)
       frozen_authorization = git_blob(head_commit, "research/pilot-intake-authorization.json")
       errors << "activation candidate head does not contain this authorization" unless
         frozen_authorization && frozen_authorization == INTAKE_AUTHORIZATION_PATH.binread
@@ -1039,7 +1367,7 @@ module ResearchEvidence
     else
       errors << "replacement registration: protocol manifest is missing"
     end
-    errors.concat(validate_validator_manifest(replacement))
+    errors.concat(validate_validator_manifest(replacement)) if errors.empty?
     errors.concat(validate_git_bindings(
                     replacement.dig("protocol", "commit").to_s,
                     replacement.dig("pilot", "commit").to_s,
@@ -1171,6 +1499,30 @@ module ResearchEvidence
     ["registration: nested values have invalid types"]
   end
 
+  def historical_document_matches?(document, current, frozen, allow_overlays:)
+    return true if current == frozen
+    return false unless allow_overlays
+
+    heading = PAUSE_HEADINGS[document]
+    return false unless heading
+
+    prefixes = []
+    pause_banner = PAUSE_BANNERS[document]
+    prefixes << "#{heading}#{pause_banner}".b if pause_banner
+    snapshot_blob = git_blob(
+      RC7_REPLACEMENT_REGISTRATION_COMMIT,
+      "research/pilots/rc7/open-banners.json"
+    )
+    snapshot = parse_strict_json_object(snapshot_blob, "frozen RC7 open-banner snapshot")
+    entry = Array(snapshot["documents"]).find { |candidate| candidate["path"] == document }
+    prefixes << (Array(entry["open_lines"]).join("\n") + "\n").b if entry
+    prefixes.any? do |prefix|
+      current.start_with?(prefix) && heading.b + current.delete_prefix(prefix) == frozen
+    end
+  rescue TypeError, NoMethodError, KeyError, ArgumentError
+    false
+  end
+
   def validate_git_bindings(protocol_commit, product_commit, tag, version, documents, allow_pause_banners: false)
     return ["registration: validation must run from a full Git checkout"] unless ROOT.join(".git").exist?
 
@@ -1201,13 +1553,13 @@ module ResearchEvidence
             dormant.file? && current_path.binread == dormant.binread
         else
           current = current_path.binread
-          banner = PAUSE_BANNERS[document]
-          heading = PAUSE_HEADINGS[document]
-          paused_prefix = "#{heading}#{banner}".b if heading && banner
-          if allow_pause_banners && paused_prefix && current.start_with?(paused_prefix)
-            current = heading.b + current.delete_prefix(paused_prefix)
-          end
-          errors << "registration: #{document} differs from the protocol commit" if frozen.b != current
+          errors << "registration: #{document} differs from the protocol commit" unless
+            historical_document_matches?(
+              document,
+              current,
+              frozen.b,
+              allow_overlays: allow_pause_banners
+            )
         end
       end
     end
