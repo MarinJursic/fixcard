@@ -14,13 +14,16 @@
 
 ## Validation before 1.0
 
-The production-v1 implementation is available as `1.0.0-rc.6`. Stable release
+The security-hardened production-v1 implementation is prepared as
+`1.0.0-rc.7`. Stable release
 promotion remains intentionally blocked on evidence rather than code volume:
 
 - assemble at least 100 permissioned, sanitized real failure/resolution pairs;
 - conduct the diary study and concierge test described in the research memo;
 - dogfood in 5–8 active repositories for four weeks;
-- achieve at least 75% judged relevance for strong matches, targeting 85%;
+- achieve at least 80% judged relevance for strong rank-one matches, targeting
+  85%, with every predeclared kill criterion overriding an otherwise passing
+  gate;
 - demonstrate median creation at or below 20 seconds after a fix is known;
 - demonstrate real reuse by authors or teammates without a serious safety event;
 - publish anonymized methodology and a go/change/stop decision.

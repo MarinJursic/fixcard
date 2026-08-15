@@ -20,12 +20,12 @@ Network services are outside the runtime data flow.
 | Threat | Control |
 | --- | --- |
 | Secret committed in a card | private-by-default storage, preview, conservative scanner, team-save cancellation on findings |
-| Malicious card suggests destructive action | all card fields remain inert, visible high-risk state, command-class diagnostics, descriptive provenance |
-| Terminal escape injection | strip C0/C1, ANSI, OSC, and unsafe bidi/control characters before output |
+| Malicious card suggests destructive action | all card fields remain inert; lookup independently raises effective displayed risk, blocks strong confidence for underdeclared or policy-denied command classes, and shows descriptive provenance |
+| Terminal escape injection or split-token scanner bypass | strip C0/C1, ANSI, OSC, and unsafe bidi/control characters before risk classification, secret redaction, and output so every stage sees the same canonical text |
 | Wrong fix for another version | semantic version constraints, visible mismatch, hard negative conditions |
 | Stale fix presented as current | `last_verified`, configurable staleness warning, retired/superseded lifecycle |
 | Symlink or path traversal | stable ID validation, reject card-directory symlinks, ignore symlinked card files, no path construction from an unvalidated ID |
-| Resource exhaustion | bounded entries, cards, aggregate and per-card bytes, anchors, extensions, queries, output tails, and diagnostics; linear-time regexes only |
+| Resource exhaustion | bounded Git output and diagnostics, committed-object counts and sizes before allocation, working entries, cards, aggregate and per-card bytes, anchors, extensions, queries, output tails, and diagnostics; Git children are terminated and reaped on bound failures; linear-time regexes only |
 | Accidental collection of prior terminal context | bare `fix` reads only an explicit bounded paste through a raw, per-invocation random-token frame; no clipboard, scrollback, history, arbitrary-log, or background capture |
 | Git option or command injection | fixed Git argv, `--` before paths, no shell invocation, non-interactive environment |
 | Shell injection through `run --` | direct argv spawn without a shell; refuse Windows batch formats; card text never becomes argv |
@@ -43,6 +43,14 @@ status under recorded conditions.
 ## Security invariants
 
 - No card content is executed.
+- Author-declared risk is never authoritative. Lookup reclassifies the title,
+  rendered body, and recorded validation command with the built-in scanner;
+  detected dangerous or repository-denied command classes cannot be a strong
+  result, and the displayed risk cannot be lower than that effective result.
+- Committed-card provenance reads reject excessive Git tree metadata, object
+  counts, individual blob sizes, and aggregate source bytes before allocating
+  blob bodies. Bounded Git diagnostics are drained concurrently, and children
+  are terminated and reaped after an early failure.
 - `run --` executes only user-supplied argv and preserves a failing child status.
 - Interactive paste reads only standard input through a raw terminal frame with
   a cryptographically random completion token, is bounded to 1 MiB, and is not

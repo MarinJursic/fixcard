@@ -25,15 +25,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use fixcard_core::{
-    CardOrigin, Confidence, Environment, LoadedCard, MatchResult, Risk, SearchOptions,
-    sanitize_terminal, search,
+    Applicability, CardOrigin, Confidence, Environment, LoadedCard, MatchEvidence, MatchResult,
+    Risk, SearchOptions, sanitize_terminal, search,
 };
 use fixcard_git::{
-    MAX_CARDS, MAX_DIRECTORY_ENTRIES, MAX_SOURCE_BYTES, Repository, load_user_cards_resilient,
+    GitError, MAX_CARDS, MAX_DIRECTORY_ENTRIES, MAX_SOURCE_BYTES, Repository,
+    load_user_cards_resilient,
 };
 use fixcard_lint::{
-    Diagnostic, LintPolicy, Severity, lint_card_set, lint_card_with_policy, parse_policy,
-    redact_secrets,
+    Diagnostic, LintPolicy, RiskAssessment, Severity, assess_risk, lint_card_set,
+    lint_card_with_policy, parse_policy, redact_secrets,
 };
 use jiff::Zoned;
 use semver::Version;
@@ -87,6 +88,9 @@ enum Command {
     Save(Box<NewArgs>),
     /// Run one explicit command and look up a known fix if it fails.
     Run {
+        /// Supply a current tool version as NAME=SEMVER; repeatable.
+        #[arg(long = "tool", value_name = "NAME=VERSION")]
+        tools: Vec<String>,
         /// Program and arguments to run after `--`.
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<OsString>,
@@ -248,7 +252,11 @@ fn is_broken_pipe(error: &anyhow::Error) -> bool {
 fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     let current = env::current_dir().context("cannot determine current directory")?;
-    let repository = Repository::discover(&current).ok();
+    let repository = match Repository::discover(&current) {
+        Ok(repository) => Some(repository),
+        Err(GitError::NotInWorktree) => None,
+        Err(error) => return Err(error.into()),
+    };
     if cli.command.is_none() && io::stdin().is_terminal() {
         return status(repository.as_ref());
     }
@@ -268,7 +276,9 @@ fn run() -> Result<ExitCode> {
                 .map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
             create::create(repository.as_ref(), &args, &policy)
         }
-        Command::Run { command } => runner::run_and_find(repository.as_ref(), &command),
+        Command::Run { tools, command } => {
+            runner::run_and_find(repository.as_ref(), &command, &tools)
+        }
         Command::Lint { path } => {
             let repository = repository.as_ref();
             let policy = repository.map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
@@ -386,17 +396,22 @@ fn lint(
     path: Option<&std::path::Path>,
     policy: &LintPolicy,
 ) -> Result<ExitCode> {
-    let lint_set = path.is_none()
-        || path.is_some_and(|value| {
-            fs::symlink_metadata(value).is_ok_and(|metadata| metadata.file_type().is_dir())
-        });
-    let paths = if let Some(path) = path {
-        lint_paths(path)?
+    let explicit_path = path.is_some();
+    let default_path;
+    let path = if let Some(path) = path {
+        path
     } else {
-        load_available_cards(repository)?
-            .into_iter()
-            .map(|card| card.path)
-            .collect()
+        default_path = if let Some(repository) = repository {
+            repository.shared_cards.clone()
+        } else {
+            user_cards_path()?
+        };
+        &default_path
+    };
+    let lint_set = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir());
+    let paths = match fs::symlink_metadata(path) {
+        Err(error) if !explicit_path && error.kind() == io::ErrorKind::NotFound => Vec::new(),
+        _ => lint_paths(path)?,
     };
     if paths.is_empty() {
         outputln!("No Fixcards found to lint.")?;
@@ -572,12 +587,30 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
         return Ok(ExitCode::from(1));
     }
     let environment = environment(&args.tools)?;
+    let policy = repository.map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
     let options = SearchOptions {
         include_retired: args.include_retired,
         today: Some(Zoned::now().date()),
         ..SearchOptions::default()
     };
-    let results = search(query, &cards, &environment, &options);
+    let mut results = search(query, &cards, &environment, &options);
+    for result in &mut results {
+        let assessment = assess_risk(&result.card.document, &policy);
+        if assessment.effective > assessment.declared || !assessment.denied_classes.is_empty() {
+            result.confidence = Confidence::Weak;
+            result.evidence.push(MatchEvidence {
+                points: 0,
+                reason: if assessment.denied_classes.is_empty() {
+                    "built-in scanner raised the displayed risk to high".to_owned()
+                } else {
+                    format!(
+                        "repository policy denies command class {}",
+                        assessment.denied_classes.join(", ")
+                    )
+                },
+            });
+        }
+    }
     let strong = results
         .iter()
         .filter(|result| result.confidence == Confidence::Strong)
@@ -587,9 +620,9 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
         outputln!("1 strong Fixcard match\n")?;
         print_match_evidence(best, args.explain)?;
         outputln!()?;
-        print_card(repository, best.card)?;
+        print_card(repository, best.card, &policy, best.stale)?;
         if args.all {
-            print_other_candidates(&results, &best.card.document.card.id, args.explain)?;
+            print_other_candidates(&results, &best.card.document.card.id, args.explain, &policy)?;
         }
         return Ok(ExitCode::SUCCESS);
     }
@@ -607,7 +640,7 @@ fn find_query(repository: Option<&Repository>, args: &FindArgs, query: &str) -> 
     if args.all {
         for result in results.iter().take(10) {
             outputln!()?;
-            print_summary(result, args.explain)?;
+            print_summary(result, args.explain, &policy)?;
         }
     }
     Ok(ExitCode::from(1))
@@ -625,6 +658,7 @@ fn print_capture_hint(repository: Option<&Repository>) -> Result<()> {
 }
 
 fn show(repository: Option<&Repository>, id: &str) -> Result<ExitCode> {
+    let policy = repository.map_or_else(|| Ok(LintPolicy::default()), load_policy)?;
     let cards = load_available_cards(repository)?;
     let (scope, bare_id) = id
         .split_once(':')
@@ -653,21 +687,35 @@ fn show(repository: Option<&Repository>, id: &str) -> Result<ExitCode> {
         .first()
         .copied()
         .ok_or_else(|| anyhow!("no card with id `{}`", sanitize_terminal(id)))?;
-    print_card(repository, card)?;
+    print_card(repository, card, &policy, card_is_stale(card))?;
     Ok(ExitCode::SUCCESS)
 }
 
-fn print_card(repository: Option<&Repository>, card: &LoadedCard) -> Result<()> {
+fn print_card(
+    repository: Option<&Repository>,
+    card: &LoadedCard,
+    policy: &LintPolicy,
+    stale: bool,
+) -> Result<()> {
     let metadata = &card.document.card;
+    let risk_assessment = assess_risk(&card.document, policy);
     outputln!("{}\n", render_untrusted(&metadata.title))?;
     outputln!("Card: {}", render_untrusted(&metadata.id))?;
     outputln!("Trust")?;
     outputln!("  origin: {}", trust_label(card))?;
-    outputln!("  risk: {}", risk(metadata.risk))?;
+    outputln!("  risk: {}", risk_label(&risk_assessment))?;
+    if !risk_assessment.denied_classes.is_empty() {
+        outputln!(
+            "  policy: blocked command class {}",
+            risk_assessment.denied_classes.join(", ")
+        )?;
+    }
     if metadata.retired {
         outputln!("  state: retired")?;
     } else if let Some(replacement) = &metadata.superseded_by {
         outputln!("  state: superseded by {}", render_untrusted(replacement))?;
+    } else if stale {
+        outputln!("  state: stale recorded validation")?;
     } else if metadata.verified.is_none() {
         outputln!("  state: unverified")?;
     } else {
@@ -717,6 +765,13 @@ fn print_card(repository: Option<&Repository>, card: &LoadedCard) -> Result<()> 
         "\nThis is evidence of a previous resolution, not a guarantee. Review commands before running them."
     )?;
     Ok(())
+}
+
+fn card_is_stale(card: &LoadedCard) -> bool {
+    card.document
+        .card
+        .last_verified
+        .is_some_and(|verified| Zoned::now().date().duration_since(verified).as_hours() / 24 > 365)
 }
 
 fn load_available_cards(repository: Option<&Repository>) -> Result<Vec<LoadedCard>> {
@@ -1061,13 +1116,14 @@ fn environment(values: &[String]) -> Result<Environment> {
     })
 }
 
-fn print_summary(result: &MatchResult<'_>, explain: bool) -> Result<()> {
+fn print_summary(result: &MatchResult<'_>, explain: bool, policy: &LintPolicy) -> Result<()> {
     let card = &result.card.document.card;
+    let risk_assessment = assess_risk(&result.card.document, policy);
     outputln!("{}", render_untrusted(&card.id))?;
     outputln!("{}", render_untrusted(&card.title))?;
     let mut states = vec![
         trust_label(result.card).to_owned(),
-        risk(card.risk).to_owned(),
+        risk_label(&risk_assessment),
     ];
     if card.verified.is_none() {
         states.push("unverified".to_owned());
@@ -1077,6 +1133,11 @@ fn print_summary(result: &MatchResult<'_>, explain: bool) -> Result<()> {
     }
     if result.version_mismatch {
         states.push("version-mismatch".to_owned());
+    }
+    match result.applicability {
+        Applicability::Known => {}
+        Applicability::Unknown => states.push("applicability-unknown".to_owned()),
+        Applicability::Invalid => states.push("applicability-invalid".to_owned()),
     }
     outputln!("{}", states.join(" · "))?;
     let applies = applies(result.card);
@@ -1122,7 +1183,12 @@ fn print_match_evidence(result: &MatchResult<'_>, explain: bool) -> Result<()> {
     Ok(())
 }
 
-fn print_other_candidates(results: &[MatchResult<'_>], best_id: &str, explain: bool) -> Result<()> {
+fn print_other_candidates(
+    results: &[MatchResult<'_>],
+    best_id: &str,
+    explain: bool,
+    policy: &LintPolicy,
+) -> Result<()> {
     let others = results
         .iter()
         .filter(|result| result.card.document.card.id != best_id)
@@ -1134,7 +1200,7 @@ fn print_other_candidates(results: &[MatchResult<'_>], best_id: &str, explain: b
     outputln!("\nOther candidates")?;
     for result in others {
         outputln!()?;
-        print_summary(result, explain)?;
+        print_summary(result, explain, policy)?;
     }
     Ok(())
 }
@@ -1158,7 +1224,7 @@ fn applies(card: &LoadedCard) -> String {
 }
 
 fn render_untrusted(value: &str) -> String {
-    sanitize_terminal(&redact_secrets(value))
+    redact_secrets(&sanitize_terminal(value))
 }
 
 const fn risk(value: Risk) -> &'static str {
@@ -1166,6 +1232,18 @@ const fn risk(value: Risk) -> &'static str {
         Risk::Low => "low risk",
         Risk::Medium => "medium risk",
         Risk::High => "high risk",
+    }
+}
+
+fn risk_label(assessment: &RiskAssessment) -> String {
+    if assessment.effective > assessment.declared {
+        format!(
+            "{} (scanner-raised from declared {})",
+            risk(assessment.effective),
+            risk(assessment.declared)
+        )
+    } else {
+        risk(assessment.effective).to_owned()
     }
 }
 
@@ -1207,7 +1285,16 @@ mod tests {
 
     use super::{
         MAX_QUERY_BYTES, TerminalQueryFrame, read_bounded_query, read_framed_terminal_query,
+        render_untrusted,
     };
+
+    #[test]
+    fn display_canonicalizes_before_redacting_split_secrets() {
+        let split = "ghp_1234567890\u{1b}[31m1234567890";
+        let rendered = render_untrusted(split);
+        assert_eq!(rendered, "[REDACTED]");
+        assert!(!rendered.contains('\u{1b}'));
+    }
 
     #[test]
     fn framed_terminal_query_treats_eot_and_following_lines_as_input() -> anyhow::Result<()> {

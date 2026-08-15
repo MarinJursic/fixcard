@@ -5,9 +5,10 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
+use std::thread;
 
-use fixcard_core::{CardOrigin, LoadedCard, ParseError, parse_card};
+use fixcard_core::{CardOrigin, LoadedCard, MAX_CARD_BYTES, ParseError, parse_card};
 use thiserror::Error;
 
 /// Directory containing repository-owned cards.
@@ -22,6 +23,8 @@ pub const MAX_CARDS: usize = 10_000;
 pub const MAX_DIRECTORY_ENTRIES: usize = 20_000;
 /// Maximum aggregate source bytes loaded per card origin.
 pub const MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_GIT_TREE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_GIT_STDERR_BYTES: usize = 64 * 1024;
 
 /// Worktree and common-directory paths resolved by Git itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +71,9 @@ pub struct LoadReport {
 /// Failure during bounded repository operations.
 #[derive(Debug, Error)]
 pub enum GitError {
+    /// The starting directory is not inside a Git worktree.
+    #[error("not inside a Git worktree")]
+    NotInWorktree,
     /// A filesystem operation failed.
     #[error("{action} `{path}`: {source}")]
     Io {
@@ -119,6 +125,9 @@ pub enum GitError {
     /// One origin exceeds the aggregate source-byte limit.
     #[error("card directory contains more than {MAX_SOURCE_BYTES} bytes of card source")]
     TooManySourceBytes,
+    /// Git emitted more tree metadata than the bounded loader accepts.
+    #[error("Git tree metadata exceeds the {MAX_GIT_TREE_BYTES}-byte safety limit")]
+    TooMuchGitMetadata,
     /// A card collection path is not a real directory.
     #[error("refusing unsafe card directory `{0}`: expected a real directory")]
     UnsafeCardDirectory(PathBuf),
@@ -132,7 +141,17 @@ impl Repository {
     /// Returns [`GitError`] outside a worktree, when Git is unavailable, or when
     /// Git returns unusable paths.
     pub fn discover(start: &Path) -> Result<Self, GitError> {
-        let root = git_path(start, &["rev-parse", "--show-toplevel"])?;
+        let root_output = git_output(start, ["rev-parse", "--show-toplevel"])?;
+        if !root_output.status.success() {
+            let stderr = String::from_utf8_lossy(&root_output.stderr);
+            if stderr.contains("not a git repository")
+                || stderr.contains("must be run in a work tree")
+            {
+                return Err(GitError::NotInWorktree);
+            }
+            return Err(command_error(&root_output));
+        }
+        let root = path_from_output(root_output)?;
         let common_dir = git_path(
             start,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -376,6 +395,25 @@ impl Repository {
             if source_bytes > MAX_SOURCE_BYTES {
                 return Err(GitError::TooManySourceBytes);
             }
+            if metadata.len() > u64::try_from(MAX_CARD_BYTES).unwrap_or(u64::MAX) {
+                if strict {
+                    return Err(GitError::Parse {
+                        path: path.clone(),
+                        source: ParseError::TooLarge {
+                            actual: usize::try_from(metadata.len()).unwrap_or(usize::MAX),
+                            maximum: MAX_CARD_BYTES,
+                        },
+                    });
+                }
+                diagnostics.push(LoadDiagnostic {
+                    path,
+                    message: format!(
+                        "card is {} bytes; maximum is {MAX_CARD_BYTES} bytes",
+                        metadata.len()
+                    ),
+                });
+                continue;
+            }
             let bytes = fs::read(&path).map_err(|source| GitError::Io {
                 action: "cannot read card",
                 path: path.clone(),
@@ -438,26 +476,32 @@ impl Repository {
     }
 
     fn committed_shared_sources(&self) -> Result<BTreeMap<PathBuf, Vec<u8>>, GitError> {
-        let output = git_output(
+        if self.head_commit()?.is_none() {
+            return Ok(BTreeMap::new());
+        }
+        let output = bounded_git_output(
             &self.root,
             [
                 OsStr::new("ls-tree"),
-                OsStr::new("-r"),
                 OsStr::new("-z"),
                 OsStr::new("HEAD"),
                 OsStr::new("--"),
-                OsStr::new(SHARED_CARDS_DIR),
+                OsStr::new(".fixcards/"),
             ],
         )?;
         if !output.status.success() {
-            return Ok(BTreeMap::new());
+            return Err(command_error(&output));
         }
         let mut objects = Vec::new();
-        for record in output
+        for (index, record) in output
             .stdout
             .split(|byte| *byte == 0)
             .filter(|item| !item.is_empty())
+            .enumerate()
         {
+            if index >= MAX_DIRECTORY_ENTRIES {
+                return Err(GitError::TooManyEntries);
+            }
             let Some(tab) = record.iter().position(|byte| *byte == b'\t') else {
                 return Err(GitError::Command("unexpected ls-tree output".to_owned()));
             };
@@ -471,8 +515,23 @@ impl Repository {
                 continue;
             }
             let relative = std::str::from_utf8(&record[tab + 1..]).map_err(|_| GitError::Utf8)?;
-            if Path::new(relative).extension().and_then(OsStr::to_str) == Some("md") {
-                objects.push((self.root.join(relative), object.to_owned()));
+            let relative_path = Path::new(relative);
+            if relative_path.parent() == Some(Path::new(SHARED_CARDS_DIR))
+                && relative_path.extension().and_then(OsStr::to_str) == Some("md")
+            {
+                if objects.len() >= MAX_CARDS {
+                    return Err(GitError::TooManyCards);
+                }
+                let path = self.root.join(relative_path);
+                let Ok(metadata) = fs::symlink_metadata(&path) else {
+                    continue;
+                };
+                if !metadata.file_type().is_file()
+                    || metadata.len() > u64::try_from(MAX_CARD_BYTES).unwrap_or(u64::MAX)
+                {
+                    continue;
+                }
+                objects.push((path, object.to_owned()));
             }
         }
         read_git_blobs(&self.root, &objects)
@@ -580,11 +639,105 @@ fn read_git_blobs(
     directory: &Path,
     objects: &[(PathBuf, String)],
 ) -> Result<BTreeMap<PathBuf, Vec<u8>>, GitError> {
+    let objects = readable_git_blobs(directory, objects)?;
     if objects.is_empty() {
         return Ok(BTreeMap::new());
     }
+    let (mut child, mut stdin, mut stdout, stderr_thread) = start_git_batch(directory, "--batch")?;
+    let result = (|| -> Result<BTreeMap<PathBuf, Vec<u8>>, GitError> {
+        let mut sources = BTreeMap::new();
+        for (path, object, expected_size) in &objects {
+            request_git_object(&mut stdin, object, directory)?;
+            let (returned, kind, size) = read_git_header(&mut stdout, path)?;
+            if returned != *object || kind != "blob" || size != *expected_size {
+                return Err(GitError::Command(
+                    "Git object changed between metadata and content reads".to_owned(),
+                ));
+            }
+            let mut bytes = vec![0; size];
+            stdout
+                .read_exact(&mut bytes)
+                .map_err(|source| GitError::Io {
+                    action: "cannot read committed card bytes",
+                    path: path.clone(),
+                    source,
+                })?;
+            let mut newline = [0_u8; 1];
+            stdout
+                .read_exact(&mut newline)
+                .map_err(|source| GitError::Io {
+                    action: "cannot finish committed card read",
+                    path: path.clone(),
+                    source,
+                })?;
+            if newline != [b'\n'] {
+                return Err(GitError::Command(
+                    "unexpected cat-file delimiter".to_owned(),
+                ));
+            }
+            sources.insert(path.clone(), bytes);
+        }
+        Ok(sources)
+    })();
+    drop(stdin);
+    drop(stdout);
+    if result.is_err() {
+        terminate_child(&mut child);
+        let _ = stderr_thread.join();
+        return result;
+    }
+    finish_git_child(&mut child, stderr_thread, directory)?;
+    result
+}
+
+fn readable_git_blobs(
+    directory: &Path,
+    objects: &[(PathBuf, String)],
+) -> Result<Vec<(PathBuf, String, usize)>, GitError> {
+    if objects.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (mut child, mut stdin, mut stdout, stderr_thread) =
+        start_git_batch(directory, "--batch-check")?;
+    let result = (|| -> Result<Vec<(PathBuf, String, usize)>, GitError> {
+        let mut readable = Vec::new();
+        let mut aggregate = 0_u64;
+        for (path, object) in objects {
+            request_git_object(&mut stdin, object, directory)?;
+            let (returned, kind, size) = read_git_header(&mut stdout, path)?;
+            if returned != *object || kind != "blob" {
+                return Err(GitError::Command("unexpected cat-file object".to_owned()));
+            }
+            if size > MAX_CARD_BYTES {
+                continue;
+            }
+            aggregate = aggregate.saturating_add(u64::try_from(size).unwrap_or(u64::MAX));
+            if aggregate > MAX_SOURCE_BYTES {
+                return Err(GitError::TooManySourceBytes);
+            }
+            readable.push((path.clone(), object.clone(), size));
+        }
+        Ok(readable)
+    })();
+    drop(stdin);
+    drop(stdout);
+    if result.is_err() {
+        terminate_child(&mut child);
+        let _ = stderr_thread.join();
+        return result;
+    }
+    finish_git_child(&mut child, stderr_thread, directory)?;
+    result
+}
+
+type StderrThread = thread::JoinHandle<std::io::Result<Vec<u8>>>;
+
+fn start_git_batch(
+    directory: &Path,
+    mode: &str,
+) -> Result<(Child, ChildStdin, BufReader<ChildStdout>, StderrThread), GitError> {
     let mut child = Command::new("git")
-        .args(["cat-file", "--batch"])
+        .args(["cat-file", mode])
         .current_dir(directory)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
@@ -597,77 +750,195 @@ fn read_git_blobs(
             path: directory.to_owned(),
             source,
         })?;
-    {
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            GitError::Command("cannot open git cat-file standard input".to_owned())
+    let Some(stdin) = child.stdin.take() else {
+        terminate_child(&mut child);
+        return Err(GitError::Command(
+            "cannot open git cat-file standard input".to_owned(),
+        ));
+    };
+    let Some(stdout) = child.stdout.take() else {
+        terminate_child(&mut child);
+        return Err(GitError::Command(
+            "cannot open git cat-file standard output".to_owned(),
+        ));
+    };
+    let Some(stderr) = child.stderr.take() else {
+        terminate_child(&mut child);
+        return Err(GitError::Command(
+            "cannot open git cat-file standard error".to_owned(),
+        ));
+    };
+    let stderr_thread = thread::spawn(move || read_bounded_stderr(stderr));
+    Ok((child, stdin, BufReader::new(stdout), stderr_thread))
+}
+
+fn request_git_object(
+    stdin: &mut ChildStdin,
+    object: &str,
+    directory: &Path,
+) -> Result<(), GitError> {
+    writeln!(stdin, "{object}")
+        .and_then(|()| stdin.flush())
+        .map_err(|source| GitError::Io {
+            action: "cannot request committed card bytes",
+            path: directory.to_owned(),
+            source,
+        })
+}
+
+fn read_git_header(
+    reader: &mut BufReader<ChildStdout>,
+    path: &Path,
+) -> Result<(String, String, usize), GitError> {
+    let mut header = String::new();
+    reader
+        .read_line(&mut header)
+        .map_err(|source| GitError::Io {
+            action: "cannot read committed card metadata",
+            path: path.to_owned(),
+            source,
         })?;
-        for (_, object) in objects {
-            writeln!(stdin, "{object}").map_err(|source| GitError::Io {
-                action: "cannot request committed card bytes",
+    let mut fields = header.split_ascii_whitespace();
+    let (Some(object), Some(kind), Some(size), None) =
+        (fields.next(), fields.next(), fields.next(), fields.next())
+    else {
+        return Err(GitError::Command("unexpected cat-file output".to_owned()));
+    };
+    let size = size
+        .parse::<usize>()
+        .map_err(|_| GitError::Command("invalid object size from git cat-file".to_owned()))?;
+    Ok((object.to_owned(), kind.to_owned(), size))
+}
+
+fn finish_git_child(
+    child: &mut Child,
+    stderr_thread: StderrThread,
+    directory: &Path,
+) -> Result<(), GitError> {
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(source) => {
+            terminate_child(child);
+            let _ = stderr_thread.join();
+            return Err(GitError::Io {
+                action: "cannot finish Git command",
                 path: directory.to_owned(),
                 source,
-            })?;
+            });
         }
+    };
+    let stderr = join_stderr(stderr_thread, directory)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(command_error(&Output {
+            status,
+            stdout: Vec::new(),
+            stderr,
+        }))
     }
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| GitError::Command("cannot open git cat-file standard output".to_owned()))?;
-    let mut reader = BufReader::new(stdout);
-    let mut sources = BTreeMap::new();
-    for (path, object) in objects {
-        let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|source| GitError::Io {
-                action: "cannot read committed card metadata",
-                path: path.clone(),
+}
+
+fn bounded_git_output<I, S>(directory: &Path, args: I) -> Result<Output, GitError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut child = Command::new("git")
+        .args(args)
+        .current_dir(directory)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|source| GitError::Io {
+            action: "cannot run Git",
+            path: directory.to_owned(),
+            source,
+        })?;
+    let Some(mut stdout) = child.stdout.take() else {
+        terminate_child(&mut child);
+        return Err(GitError::Command(
+            "cannot open Git standard output".to_owned(),
+        ));
+    };
+    let Some(stderr) = child.stderr.take() else {
+        terminate_child(&mut child);
+        return Err(GitError::Command(
+            "cannot open Git standard error".to_owned(),
+        ));
+    };
+    let stderr_thread = thread::spawn(move || read_bounded_stderr(stderr));
+    let mut stdout_bytes = Vec::new();
+    if let Err(source) = stdout
+        .by_ref()
+        .take(MAX_GIT_TREE_BYTES + 1)
+        .read_to_end(&mut stdout_bytes)
+    {
+        terminate_child(&mut child);
+        let _ = stderr_thread.join();
+        return Err(GitError::Io {
+            action: "cannot read Git output",
+            path: directory.to_owned(),
+            source,
+        });
+    }
+    if u64::try_from(stdout_bytes.len()).unwrap_or(u64::MAX) > MAX_GIT_TREE_BYTES {
+        terminate_child(&mut child);
+        let _ = stderr_thread.join();
+        return Err(GitError::TooMuchGitMetadata);
+    }
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(source) => {
+            terminate_child(&mut child);
+            let _ = stderr_thread.join();
+            return Err(GitError::Io {
+                action: "cannot finish Git command",
+                path: directory.to_owned(),
                 source,
-            })?;
-        let mut fields = header.split_ascii_whitespace();
-        let (Some(returned), Some(kind), Some(size)) =
-            (fields.next(), fields.next(), fields.next())
-        else {
-            return Err(GitError::Command("unexpected cat-file output".to_owned()));
-        };
-        if returned != object || kind != "blob" {
-            return Err(GitError::Command("unexpected cat-file object".to_owned()));
+            });
         }
-        let size = size
-            .parse::<usize>()
-            .map_err(|_| GitError::Command("invalid object size from git cat-file".to_owned()))?;
-        let mut bytes = vec![0; size];
-        reader
-            .read_exact(&mut bytes)
-            .map_err(|source| GitError::Io {
-                action: "cannot read committed card bytes",
-                path: path.clone(),
-                source,
-            })?;
-        let mut newline = [0_u8; 1];
-        reader
-            .read_exact(&mut newline)
-            .map_err(|source| GitError::Io {
-                action: "cannot finish committed card read",
-                path: path.clone(),
-                source,
-            })?;
-        if newline != [b'\n'] {
-            return Err(GitError::Command(
-                "unexpected cat-file delimiter".to_owned(),
-            ));
+    };
+    let stderr = join_stderr(stderr_thread, directory)?;
+    Ok(Output {
+        status,
+        stdout: stdout_bytes,
+        stderr,
+    })
+}
+
+fn join_stderr(
+    thread: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    directory: &Path,
+) -> Result<Vec<u8>, GitError> {
+    thread
+        .join()
+        .map_err(|_| GitError::Command("Git stderr reader panicked".to_owned()))?
+        .map_err(|source| GitError::Io {
+            action: "cannot read Git standard error",
+            path: directory.to_owned(),
+            source,
+        })
+}
+
+fn terminate_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn read_bounded_stderr<R: Read>(mut reader: R) -> std::io::Result<Vec<u8>> {
+    let mut stored = Vec::new();
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            return Ok(stored);
         }
-        sources.insert(path.clone(), bytes);
+        let remaining = MAX_GIT_STDERR_BYTES.saturating_sub(stored.len());
+        stored.extend_from_slice(&buffer[..read.min(remaining)]);
     }
-    let output = child.wait_with_output().map_err(|source| GitError::Io {
-        action: "cannot finish Git command",
-        path: directory.to_owned(),
-        source,
-    })?;
-    if !output.status.success() {
-        return Err(command_error(&output));
-    }
-    Ok(sources)
 }
 
 fn git_path(start: &Path, args: &[&str]) -> Result<PathBuf, GitError> {
@@ -675,6 +946,10 @@ fn git_path(start: &Path, args: &[&str]) -> Result<PathBuf, GitError> {
     if !output.status.success() {
         return Err(command_error(&output));
     }
+    path_from_output(output)
+}
+
+fn path_from_output(output: Output) -> Result<PathBuf, GitError> {
     let text = String::from_utf8(output.stdout).map_err(|_| GitError::Utf8)?;
     let path = text.trim();
     if path.is_empty() {
@@ -688,17 +963,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    Command::new("git")
-        .args(args)
-        .current_dir(directory)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("LC_ALL", "C")
-        .output()
-        .map_err(|source| GitError::Io {
-            action: "cannot run Git",
-            path: directory.to_owned(),
-            source,
-        })
+    bounded_git_output(directory, args)
 }
 
 fn command_error(output: &Output) -> GitError {
@@ -812,6 +1077,142 @@ mod tests {
         assert!(!repository.load_cards().unwrap_or_default()[0].committed);
         fs::write(&path, original).unwrap_or_else(|error| panic!("restore shared: {error}"));
         assert!(repository.load_cards().unwrap_or_default()[0].committed);
+    }
+
+    #[test]
+    fn oversized_committed_blob_is_never_loaded_for_provenance() {
+        let (temp, repository) = repository();
+        fs::create_dir_all(&repository.shared_cards)
+            .unwrap_or_else(|error| panic!("mkdir shared: {error}"));
+        let path = repository.shared_cards.join("oversized.md");
+        fs::write(&path, vec![b'x'; MAX_CARD_BYTES + 1])
+            .unwrap_or_else(|error| panic!("write oversized card: {error}"));
+        git(temp.path(), &["add", ".fixcards/oversized.md"]);
+        git(
+            temp.path(),
+            &[
+                "-c",
+                "user.name=Fixcard Test",
+                "-c",
+                "user.email=fixcard@example.invalid",
+                "commit",
+                "-q",
+                "-m",
+                "add hostile oversized card",
+            ],
+        );
+        fs::write(&path, card("oversized"))
+            .unwrap_or_else(|error| panic!("replace oversized working card: {error}"));
+
+        let report = repository
+            .load_cards_resilient()
+            .unwrap_or_else(|error| panic!("resilient load: {error}"));
+        assert_eq!(report.cards.len(), 1);
+        assert_eq!(report.cards[0].document.card.id, "oversized");
+        assert!(!report.cards[0].committed);
+    }
+
+    #[test]
+    fn oversized_or_nested_committed_cards_do_not_hide_a_valid_card() {
+        let (temp, repository) = repository();
+        fs::create_dir_all(repository.shared_cards.join("nested"))
+            .unwrap_or_else(|error| panic!("mkdir shared: {error}"));
+        fs::write(repository.shared_cards.join("valid.md"), card("valid"))
+            .unwrap_or_else(|error| panic!("write valid card: {error}"));
+        fs::write(
+            repository.shared_cards.join("oversized.md"),
+            vec![b'x'; MAX_CARD_BYTES + 1],
+        )
+        .unwrap_or_else(|error| panic!("write oversized card: {error}"));
+        fs::write(
+            repository.shared_cards.join("nested/ignored.md"),
+            vec![b'x'; MAX_CARD_BYTES + 1],
+        )
+        .unwrap_or_else(|error| panic!("write nested card: {error}"));
+        git(temp.path(), &["add", ".fixcards"]);
+        git(
+            temp.path(),
+            &[
+                "-c",
+                "user.name=Fixcard Test",
+                "-c",
+                "user.email=fixcard@example.invalid",
+                "commit",
+                "-q",
+                "-m",
+                "add mixed cards",
+            ],
+        );
+
+        let report = repository
+            .load_cards_resilient()
+            .unwrap_or_else(|error| panic!("resilient load: {error}"));
+        assert_eq!(report.cards.len(), 1);
+        assert_eq!(report.cards[0].document.card.id, "valid");
+        assert!(report.cards[0].committed);
+        assert_eq!(report.diagnostics.len(), 1);
+        assert!(report.diagnostics[0].message.contains("maximum"));
+    }
+
+    #[test]
+    fn large_batch_makes_progress_without_filling_git_pipes() {
+        let (temp, repository) = repository();
+        fs::create_dir_all(&repository.shared_cards)
+            .unwrap_or_else(|error| panic!("mkdir shared: {error}"));
+        fs::write(repository.shared_cards.join("valid.md"), card("valid"))
+            .unwrap_or_else(|error| panic!("write valid card: {error}"));
+        git(temp.path(), &["add", ".fixcards/valid.md"]);
+        git(
+            temp.path(),
+            &[
+                "-c",
+                "user.name=Fixcard Test",
+                "-c",
+                "user.email=fixcard@example.invalid",
+                "commit",
+                "-q",
+                "-m",
+                "add valid card",
+            ],
+        );
+        let output = git_output(temp.path(), ["rev-parse", "HEAD:.fixcards/valid.md"])
+            .unwrap_or_else(|error| panic!("resolve object: {error}"));
+        assert!(output.status.success());
+        let object = String::from_utf8(output.stdout)
+            .unwrap_or_else(|error| panic!("object utf8: {error}"))
+            .trim()
+            .to_owned();
+        let objects = (0..2_000)
+            .map(|index| {
+                (
+                    repository.shared_cards.join(format!("card-{index}.md")),
+                    object.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let sources = read_git_blobs(temp.path(), &objects)
+            .unwrap_or_else(|error| panic!("read large batch: {error}"));
+        assert_eq!(sources.len(), objects.len());
+    }
+
+    #[test]
+    fn resilient_loading_quarantines_oversized_working_card_without_reading_it() {
+        let (_temp, repository) = repository();
+        fs::create_dir_all(&repository.shared_cards)
+            .unwrap_or_else(|error| panic!("mkdir shared: {error}"));
+        fs::write(
+            repository.shared_cards.join("oversized.md"),
+            vec![b'x'; MAX_CARD_BYTES + 1],
+        )
+        .unwrap_or_else(|error| panic!("write oversized card: {error}"));
+
+        let report = repository
+            .load_cards_resilient()
+            .unwrap_or_else(|error| panic!("resilient load: {error}"));
+        assert!(report.cards.is_empty());
+        assert_eq!(report.diagnostics.len(), 1);
+        assert!(report.diagnostics[0].message.contains("maximum"));
     }
 
     #[cfg(unix)]

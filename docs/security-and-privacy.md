@@ -47,12 +47,23 @@ through a command shell.
 
 - per-card, aggregate-source, card-count, directory-entry, query, anchor,
   extension-depth, extension-node, and diagnostic work are bounded;
+- Git metadata and diagnostics are bounded, committed blob sizes are checked
+  before allocation, aggregate committed bytes are capped, and a Git child is
+  terminated and reaped when a bound or protocol check fails;
 - card-directory symlinks are rejected and symlinked card files are ignored;
 - IDs cannot traverse paths;
 - ambiguous YAML and unsupported schema versions fail closed;
 - terminal escape and unsafe control characters are stripped before display;
+- the same canonical terminal-safe representation is classified and redacted
+  before rendering, so controls cannot split a dangerous command or
+  credential-shaped token and then disappear to reconstruct it;
 - semantic-version conflicts and negative conditions lower trust rather than
-  being hidden by textual similarity.
+  being hidden by textual similarity;
+- a missing current version for a tool-constrained card blocks strong
+  confidence instead of assuming applicability;
+- every displayed card is reclassified by the built-in command-risk scanner.
+  Underdeclared or repository-denied dangerous content is weak, and its
+  effective high-risk state is shown before the inert resolution text.
 - interactive paste reads only explicit terminal input through a raw,
   random-token frame; it never reads the clipboard, terminal scrollback, shell
   history, or arbitrary logs.
@@ -101,9 +112,10 @@ deny-command-classes = [
 ]
 ```
 
-Unknown fields or class names fail closed. The policy affects `lint` and card
-creation; it cannot enable execution or weaken built-in diagnostics. The file
-must be a regular UTF-8 file no larger than 64 KiB.
+Unknown fields or class names fail closed. The policy affects `lint`, card
+creation, and lookup-time confidence. It cannot enable execution, lower an
+effective risk, or weaken built-in diagnostics. The file must be a regular
+UTF-8 file no larger than 64 KiB.
 
 Report vulnerabilities privately using GitHub's security advisory interface as
 described in the [security policy](../SECURITY.md). The detailed abuse cases and

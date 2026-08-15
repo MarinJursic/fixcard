@@ -7,6 +7,40 @@ candidate until the documented product-validation gates pass.
 
 ## [Unreleased]
 
+## [1.0.0-rc.7] - 2026-08-15
+
+### Security hardening
+
+- Bound Git tree metadata, committed-card object counts, per-object sizes,
+  aggregate committed bytes, and captured Git diagnostics before allocation;
+  use sequential metadata/content batch exchanges so pipes cannot deadlock;
+  terminate and reap Git subprocesses when a bound or protocol check fails.
+- Reclassify every displayed card with the built-in command-risk scanner and
+  repository policy at lookup time. An author-declared lower risk can no longer
+  produce a strong result or a misleading low-risk label.
+- Canonicalize terminal controls before risk and secret classification so ANSI,
+  OSC, C0/C1, or bidirectional controls cannot split a token that display later
+  reconstructs.
+
+### Correctness and trust
+
+- Match failed command output only, never diagnostic-looking command arguments,
+  and preserve the original child status even when the later card lookup fails.
+- Make pathless `lint` strictly validate only repository-owned `.fixcards`
+  inside a worktree and only user-global cards outside one, instead of silently
+  quarantining malformed cards or mixing scopes into repository CI.
+- Surface Git execution failures instead of misreporting them as a
+  non-repository directory.
+- Label stale recorded validation before rendering a strong result's inert
+  instructions instead of exposing age only as an unlabeled date.
+- Keep tool-constrained cards weak while a relevant current version is unknown
+  or a recorded range is invalid, with explicit applicability states. Supply
+  versions to capture with `run --tool NAME=VERSION -- PROGRAM`.
+- Keep combined post-failure lookup text within the documented 1 MiB limit even
+  when lossy UTF-8 conversion expands invalid child-output bytes.
+- Align the roadmap with the frozen 80% strong rank-one relevance gate and its
+  kill-criterion override.
+
 ## [1.0.0-rc.6] - 2026-08-05
 
 ### Matching correctness
@@ -148,7 +182,8 @@ candidate until the documented product-validation gates pass.
   display.
 - YAML aliases/custom tags fail closed; terminal control bytes are neutralized.
 
-[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.6...HEAD
+[Unreleased]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.7...HEAD
+[1.0.0-rc.7]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.6...v1.0.0-rc.7
 [1.0.0-rc.6]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.5...v1.0.0-rc.6
 [1.0.0-rc.5]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.4...v1.0.0-rc.5
 [1.0.0-rc.4]: https://github.com/MarinJursic/fixcard/compare/v1.0.0-rc.3...v1.0.0-rc.4

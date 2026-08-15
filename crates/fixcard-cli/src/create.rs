@@ -282,7 +282,7 @@ fn render(
 fn print_preview(source: &str, diagnostics: &[fixcard_lint::Diagnostic]) -> Result<()> {
     outputln!(
         "\nPreview\n\n{}",
-        sanitize_terminal(&redact_secrets(source))
+        redact_secrets(&sanitize_terminal(source))
     )?;
     if diagnostics.is_empty() {
         outputln!("\nLint: no findings")?;

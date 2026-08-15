@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
-use fixcard_core::{CardDocument, Risk};
+use fixcard_core::{CardDocument, Risk, sanitize_terminal};
 use jiff::civil::Date;
 use regex::Regex;
 use semver::{Version, VersionReq};
@@ -182,6 +182,19 @@ pub struct LintPolicy {
     pub deny_command_classes: BTreeSet<String>,
 }
 
+/// Runtime classification of command-shaped content that may be displayed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RiskAssessment {
+    /// Author-declared risk from the card.
+    pub declared: Risk,
+    /// Risk after applying built-in command classifiers.
+    pub effective: Risk,
+    /// Built-in command classes detected in displayed content.
+    pub detected_classes: Vec<&'static str>,
+    /// Detected classes forbidden by repository policy.
+    pub denied_classes: Vec<&'static str>,
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct PolicyDocument {
@@ -216,6 +229,44 @@ pub fn parse_policy(source: &str) -> Result<LintPolicy, String> {
         ));
     }
     Ok(document.lint)
+}
+
+/// Classify the content rendered by lookup independently of author claims.
+///
+/// Repository policy can only add denied classes; it cannot lower the built-in
+/// effective risk.
+#[must_use]
+pub fn assess_risk(document: &CardDocument, policy: &LintPolicy) -> RiskAssessment {
+    let mut displayed = String::new();
+    displayed.push_str(&document.card.title);
+    displayed.push('\n');
+    displayed.push_str(&document.body);
+    if let Some(verification) = &document.card.verified {
+        displayed.push('\n');
+        displayed.push_str(&verification.command);
+    }
+    let displayed = sanitize_terminal(&displayed);
+    let detected_classes = RISK_PATTERNS
+        .iter()
+        .filter(|(_, _, pattern)| pattern.is_match(&displayed))
+        .map(|(class, _, _)| *class)
+        .collect::<Vec<_>>();
+    let denied_classes = detected_classes
+        .iter()
+        .copied()
+        .filter(|class| policy.deny_command_classes.contains(*class))
+        .collect::<Vec<_>>();
+    let effective = if detected_classes.is_empty() {
+        document.card.risk
+    } else {
+        Risk::High
+    };
+    RiskAssessment {
+        declared: document.card.risk,
+        effective,
+        detected_classes,
+        denied_classes,
+    }
 }
 
 /// Inspect a valid parsed document and its original source.
@@ -628,7 +679,8 @@ fn lint_lifecycle(document: &CardDocument, today: Option<Date>, diagnostics: &mu
 }
 
 fn lint_secrets(source: &str, diagnostics: &mut Vec<Diagnostic>) {
-    for found in sensitive_matches(source) {
+    let canonical = sanitize_terminal(source);
+    for found in sensitive_matches(&canonical) {
         let (code, message) = match found.kind {
             SensitiveKind::Pattern(kind) => (
                 "possible-secret",
@@ -644,7 +696,7 @@ fn lint_secrets(source: &str, diagnostics: &mut Vec<Diagnostic>) {
             code,
             severity: Severity::Error,
             message,
-            line: Some(line_number(source, found.start)),
+            line: Some(line_number(&canonical, found.start)),
         });
     }
 }
@@ -690,8 +742,9 @@ fn lint_risk(
     policy: &LintPolicy,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let canonical = sanitize_terminal(source);
     for (class, kind, pattern) in RISK_PATTERNS.iter() {
-        if let Some(found) = pattern.find(source) {
+        if let Some(found) = pattern.find(&canonical) {
             let declared_high = document.card.risk == Risk::High;
             let denied = policy.deny_command_classes.contains(*class);
             diagnostics.push(Diagnostic {
@@ -714,7 +767,7 @@ fn lint_risk(
                 } else {
                     format!("card contains {kind} but risk is not `high`")
                 },
-                line: Some(line_number(source, found.start())),
+                line: Some(line_number(&canonical, found.start())),
             });
         }
     }
@@ -860,6 +913,46 @@ mod tests {
                 .any(|item| item.code == "high-risk-command")
         );
         assert!(!blocks_team_save(&diagnostics));
+    }
+
+    #[test]
+    fn runtime_risk_cannot_be_lowered_by_the_card_or_policy() {
+        let input = source("sudo rm -rf /var/example", "low");
+        let document = parse_card(&input).unwrap_or_else(|error| panic!("fixture: {error}"));
+        let default = assess_risk(&document, &LintPolicy::default());
+        assert_eq!(default.declared, Risk::Low);
+        assert_eq!(default.effective, Risk::High);
+        assert!(default.detected_classes.contains(&"privileged-command"));
+        assert!(default.detected_classes.contains(&"recursive-deletion"));
+
+        let policy = LintPolicy {
+            deny_command_classes: BTreeSet::from(["privileged-command".to_owned()]),
+        };
+        let restricted = assess_risk(&document, &policy);
+        assert_eq!(restricted.effective, Risk::High);
+        assert_eq!(restricted.denied_classes, ["privileged-command"]);
+    }
+
+    #[test]
+    fn terminal_controls_cannot_split_risk_or_secret_patterns() {
+        let input = source(
+            "su\u{1b}[31mdo r\u{1b}[0mm -rf /var/example ghp_1234567890\u{202e}1234567890",
+            "low",
+        );
+        let document = parse_card(&input).unwrap_or_else(|error| panic!("fixture: {error}"));
+        let risk = assess_risk(&document, &LintPolicy::default());
+        assert_eq!(risk.effective, Risk::High);
+        let diagnostics = lint_card(&document, &input, None);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code == "understated-risk")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code == "possible-secret")
+        );
     }
 
     #[test]

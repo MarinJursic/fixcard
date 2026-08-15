@@ -1,22 +1,28 @@
 //! Explicit, bounded command capture for one-step lookup.
 
 use std::collections::VecDeque;
-use std::ffi::{OsStr, OsString};
+#[cfg(target_os = "windows")]
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 
 use anyhow::{Context, Result, anyhow, bail};
+use fixcard_core::sanitize_terminal;
 use fixcard_git::Repository;
 
-use crate::{FindArgs, find_query, output_to_stderr};
+use crate::{FindArgs, MAX_QUERY_BYTES, find_query, output_to_stderr};
 
+const QUERY_SEPARATOR_BYTES: usize = 1;
+const QUERY_BYTES_PER_STREAM: usize = (MAX_QUERY_BYTES - QUERY_SEPARATOR_BYTES) / 2;
 const CAPTURE_BYTES_PER_STREAM: usize = 512 * 1024;
 const READ_BUFFER_BYTES: usize = 16 * 1024;
 
 pub(super) fn run_and_find(
     repository: Option<&Repository>,
     command: &[OsString],
+    tools: &[String],
 ) -> Result<ExitCode> {
     let (program, arguments) = command
         .split_first()
@@ -61,17 +67,42 @@ pub(super) fn run_and_find(
         return Ok(ExitCode::SUCCESS);
     }
 
-    let mut query = format!(
-        "command: {}\nexit status: {}\n",
-        display_command(program, arguments),
-        status
-    );
-    query.push_str(&String::from_utf8_lossy(&stderr_tail));
+    let mut query = lossy_bounded(&stderr_tail, QUERY_BYTES_PER_STREAM);
     query.push('\n');
-    query.push_str(&String::from_utf8_lossy(&stdout_tail));
+    query.push_str(&lossy_bounded(&stdout_tail, QUERY_BYTES_PER_STREAM));
+    if query.trim().is_empty() {
+        let _ = writeln!(
+            io::stderr().lock(),
+            "Fixcard lookup skipped: the failed command produced no captured output."
+        );
+        return Ok(exit_code(status));
+    }
     let _output_guard = output_to_stderr();
-    let _ = find_query(repository, &FindArgs::default(), &query)?;
+    let find_args = FindArgs {
+        tools: tools.to_owned(),
+        ..FindArgs::default()
+    };
+    if let Err(error) = find_query(repository, &find_args, &query) {
+        let _ = writeln!(
+            io::stderr().lock(),
+            "warning: Fixcard lookup failed: {}",
+            sanitize_terminal(&format!("{error:#}"))
+        );
+    }
     Ok(exit_code(status))
+}
+
+fn lossy_bounded(bytes: &[u8], limit: usize) -> String {
+    let mut value = String::from_utf8_lossy(bytes).into_owned();
+    if value.len() <= limit {
+        return value;
+    }
+    let mut end = limit;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value.truncate(end);
+    value
 }
 
 fn tee_tail<R, W>(mut reader: R, mut writer: W) -> io::Result<Vec<u8>>
@@ -110,14 +141,6 @@ fn join_capture(handle: thread::JoinHandle<io::Result<Vec<u8>>>, stream: &str) -
         .join()
         .map_err(|_| anyhow!("{stream} capture thread panicked"))?
         .with_context(|| format!("cannot stream command {stream}"))
-}
-
-fn display_command(program: &OsStr, arguments: &[OsString]) -> String {
-    std::iter::once(program)
-        .chain(arguments.iter().map(OsString::as_os_str))
-        .map(|part| part.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn exit_code(status: std::process::ExitStatus) -> ExitCode {
@@ -205,5 +228,13 @@ mod tests {
         let mut tail = Tail::new(5);
         tail.push(b"1234567");
         assert_eq!(tail.into_bytes(), b"34567");
+    }
+
+    #[test]
+    fn lossy_query_conversion_stays_within_its_byte_budget() {
+        let bytes = vec![0xff; QUERY_BYTES_PER_STREAM];
+        let value = lossy_bounded(&bytes, QUERY_BYTES_PER_STREAM);
+        assert!(value.len() <= QUERY_BYTES_PER_STREAM);
+        assert!(value.is_char_boundary(value.len()));
     }
 }
